@@ -1,1 +1,8 @@
-
+{
+  "version": 2,
+  "functions": {
+    "api/template.js": {
+      "maxDuration": 30
+    }
+  }
+}
