@@ -1,1 +1,12 @@
-
+{
+  "name": "shree-rch-template-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SHREE RCH Mother/Child Excel template generator with dependent location dropdowns.",
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
+}
