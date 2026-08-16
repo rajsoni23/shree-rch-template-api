@@ -53,6 +53,7 @@ function clean(value) {
     .trim();
 }
 
+// FIX: Spaces ko '_' aur Brackets ko '__' me convert karega
 function convertLocationFormat(value) {
   if (value === null || value === undefined) {
     return "";
@@ -60,7 +61,8 @@ function convertLocationFormat(value) {
   return String(value)
     .trim()
     .replace(/\(/g, "__")
-    .replace(/\)/g, "__");
+    .replace(/\)/g, "__")
+    .replace(/\s+/g, "_"); // Spaces ko underscore me convert karta hai
 }
 
 function normalizeObject(value) {
@@ -167,9 +169,9 @@ function addListValidation(cell, formula, errorTitle, error) {
 }
 
 function styleHeader(row) {
-  row.height = 25;
+  row.height = 24;
   row.eachCell(cell => {
-    cell.font = { name: "Calibri", bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     cell.border = {
@@ -213,7 +215,7 @@ function createWorkbook(type, locationData) {
   const headers = type === "child" ? CHILD_HEADERS : MOTHER_HEADERS;
   configureMainSheet(main, headers);
 
-  // Subcenter Sheet Headers
+  // Subcenter Headers
   subcenter.getRow(1).values = ["PHC", "SubCentre"];
   styleHeader(subcenter.getRow(1));
   subcenter.getColumn(1).width = 30;
@@ -230,7 +232,7 @@ function createWorkbook(type, locationData) {
     }
   }
 
-  // Unique PHC List in Subcenter Sheet (Column D)
+  // Populate Unique PHC List in Column D
   const phcListStart = 2;
   model.phcs.forEach((phc, index) => {
     subcenter.getCell(phcListStart + index, 4).value = phc;
@@ -239,7 +241,7 @@ function createWorkbook(type, locationData) {
   const lastPhcRow = phcListStart + model.phcs.length - 1;
   workbook.definedNames.add(`'Subcenter'!$D$2:$D$${lastPhcRow}`, "PHC_LIST");
 
-  // Village Sheet Headers
+  // Village Headers
   village.getRow(1).values = ["PHC", "SubCentre", "Village", "PAIR_KEY"];
   styleHeader(village.getRow(1));
   village.getColumn(1).width = 30;
@@ -269,7 +271,7 @@ function createWorkbook(type, locationData) {
     }
   }
 
-  // Unique Pair Keys List in Village Sheet (Column E)
+  // Unique Pair Keys List in Column E
   village.getColumn(5).hidden = true;
   pairList.forEach((pair, index) => {
     village.getCell(index + 2, 5).value = pair;
@@ -284,7 +286,7 @@ function createWorkbook(type, locationData) {
 
   /* Data Validation Setup for Rows */
   for (let row = 2; row <= MAX_ROWS + 1; row++) {
-    // 1. Health Facility (PHC) Validation
+    // Health Facility (PHC)
     addListValidation(
       main.getCell(row, 1),
       "=PHC_LIST",
@@ -292,8 +294,8 @@ function createWorkbook(type, locationData) {
       "Select a Health Facility from the dropdown."
     );
 
-    // 2. SubCentre Dynamic Formula (Cascading based on PHC in A)
-    const subCenterFormula = `=OFFSET(Subcenter!$B$1,IFERROR(MATCH(A${row},Subcenter!$A$2:$A$${maxSubRow},0),1),0,MAX(1,COUNTIF(Subcenter!$A$2:$A$${maxSubRow},A${row})),1)`;
+    // SubCentre Formula
+    const subCenterFormula = `=OFFSET(Subcenter!$B$1,MATCH(A${row},Subcenter!$A$2:$A$${maxSubRow},0),0,COUNTIF(Subcenter!$A$2:$A$${maxSubRow},A${row}),1)`;
 
     addListValidation(
       main.getCell(row, 2),
@@ -302,8 +304,8 @@ function createWorkbook(type, locationData) {
       "Select a SubCentre belonging to the selected Health Facility."
     );
 
-    // 3. Village Dynamic Formula (Cascading based on PHC in A & SubCentre in B)
-    const villageFormula = `=OFFSET(Village!$C$1,IFERROR(MATCH(A${row}&"|"&B${row},Village!$D$2:$D$${maxVillageRow},0),1),0,MAX(1,COUNTIF(Village!$D$2:$D$${maxVillageRow},A${row}&"|"&B${row})),1)`;
+    // Village Formula
+    const villageFormula = `=OFFSET(Village!$C$1,MATCH(A${row}&"|"&B${row},Village!$D$2:$D$${maxVillageRow},0),0,COUNTIF(Village!$D$2:$D$${maxVillageRow},A${row}&"|"&B${row}),1)`;
 
     addListValidation(
       main.getCell(row, 3),
@@ -385,7 +387,7 @@ module.exports = async function handler(req, res) {
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(Buffer.from(buffer));
   } catch (error) {
-    console.error("SHREE RCH Template API Error:", error);
+    console.error("SHREE RCH Template API:", error);
     res.status(400).json({
       ok: false,
       error: error.message || "Template generation failed.",
