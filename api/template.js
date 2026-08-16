@@ -44,7 +44,7 @@ const CHILD_HEADERS = [
 ];
 
 /* =========================================================
-   1. RCH FORMATTERS & PATTERN MATCHERS
+   1. STRICT RCH UNDERSCORE NORMALIZER
    ========================================================= */
 
 function clean(value) {
@@ -53,29 +53,33 @@ function clean(value) {
     .trim();
 }
 
-// Display String Formatter (Cell content in sheet)
-// Converts hyphens & spaces to '_', brackets to '__'
+// Strictly fixes 2 vs 3 vs 4 underscores mismatch
 function formatRCHName(value) {
   if (value === null || value === undefined) return "";
   let str = String(value).trim();
-  
+
   if (str === "--ALL--" || str === "__ALL__") return "__ALL__";
 
-  return str
-    .replace(/[\s\-]+/g, "_")
-    .replace(/\(/g, "__")
-    .replace(/\)/g, "__");
-}
+  // Standardize spaces and hyphens first
+  str = str.replace(/[\s\-]+/g, "_");
 
-// Excel Defined Name Sanitizer (For internal XML rules)
-function sanitizeNamedRange(name) {
-  if (!name) return "_EMPTY_";
-  
-  let sanitized = String(name)
-    .replace(/[^a-zA-Z0-9_]/g, "_")
-    .replace(/^[^a-zA-Z_]/, "_$&");
+  // Fix asterisk spacing: Text___*___ID__
+  if (str.includes("*")) {
+    const parts = str.split("*");
+    const left = parts[0].replace(/_+/g, "_").replace(/_$/, "");
+    const right = parts[1].replace(/_+/g, "_").replace(/^_/, "").replace(/_$/, "");
+    return `${left}___*___${right}__`;
+  }
 
-  return sanitized;
+  // Normal Text__ID__ pattern (Exactly 2 underscores before ID)
+  const idMatch = str.match(/^(.*?)_?([0-9]+)_*$/);
+  if (idMatch) {
+    const mainText = idMatch[1].replace(/_+/g, "_").replace(/_$/, "");
+    const id = idMatch[2];
+    return `${mainText}__${id}__`;
+  }
+
+  return str.replace(/_+/g, "_");
 }
 
 function normalizeObject(value) {
@@ -154,7 +158,6 @@ function createWorkbook(type, locationData) {
     main.getColumn(c).width = Math.max(16, headers[c - 1].length + 4);
   }
 
-  // Set Default Header Values
   subcenter.getCell(1, 1).value = "__ALL__";
   village.getCell(1, 1).value = "__ALL__";
 
@@ -166,7 +169,6 @@ function createWorkbook(type, locationData) {
 
   rawPhcs.forEach(rawPhc => {
     const phcFormatted = formatRCHName(rawPhc);
-    const phcSafeName = sanitizeNamedRange(phcFormatted);
     if (!phcFormatted) return;
 
     formattedPhcList.push(phcFormatted);
@@ -180,7 +182,6 @@ function createWorkbook(type, locationData) {
 
     rawSubKeys.forEach(rawSub => {
       const subFormatted = formatRCHName(rawSub);
-      const subSafeName = sanitizeNamedRange(subFormatted);
       if (!subFormatted) return;
 
       subcenter.getCell(subRow, subCol).value = subFormatted;
@@ -201,27 +202,27 @@ function createWorkbook(type, locationData) {
       }
       village.getCell(vRow, villageCol).value = "__ALL__";
 
-      // Add Defined Range for Subcentre -> Village
+      // Add Defined Name for Subcentre -> Village
       const vColLetter = getColumnLetter(villageCol);
       const vMaxRow = Math.max(vRow, 2);
       
       try {
-        workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subSafeName);
+        workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subFormatted);
       } catch (e) {
-        console.error("Named range error (Village):", subSafeName, e);
+        console.error("Named range error:", subFormatted, e);
       }
 
       villageCol++;
     });
 
-    // Add Defined Range for PHC -> Subcentre
+    // Add Defined Name for PHC -> Subcentre
     const sColLetter = getColumnLetter(subCol);
     const sMaxRow = Math.max(subRow - 1, 2);
     
     try {
-      workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcSafeName);
+      workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcFormatted);
     } catch (e) {
-      console.error("Named range error (Subcentre):", phcSafeName, e);
+      console.error("Named range error:", phcFormatted, e);
     }
 
     subCol++;
@@ -231,7 +232,7 @@ function createWorkbook(type, locationData) {
   if (formattedPhcList.length > 0) {
     const phcFormula = `"${["__ALL__", ...formattedPhcList].join(",")}"`;
 
-    for (let row = 2; row <= MAX_ROWS + 1; row++) {
+    for (row = 2; row <= MAX_ROWS + 1; row++) {
       // Column A: Health Facility
       main.getCell(`A${row}`).dataValidation = {
         type: "list",
