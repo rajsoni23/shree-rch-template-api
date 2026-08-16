@@ -49,23 +49,7 @@ function clean(value) {
     .trim();
 }
 
-
-/*
- * RCH LOCATION FORMAT
- *
- * BAGHAURA (3181)
- *        ↓
- * BAGHAURA__3181__
- *
- * Pachokhara (3182)
- *        ↓
- * Pachokhara__3182__
- *
- * Existing values which already contain __
- * are preserved as they are.
- */
 function convertLocationFormat(value) {
-
   if (
     value === null ||
     value === undefined
@@ -76,39 +60,19 @@ function convertLocationFormat(value) {
   let text =
     String(value).trim();
 
-
-  /*
-   * (3181) -> __3181__
-   */
   text =
-    text.replace(
-      /\(/g,
-      "__"
-    );
+    text.replace(/\(/g, "__");
 
   text =
-    text.replace(
-      /\)/g,
-      "__"
-    );
+    text.replace(/\)/g, "__");
 
-
-  /*
-   * Keep existing RCH location
-   * formatting intact.
-   */
   return text;
 }
-
 
 function normalizeObject(value) {
 
   if (Array.isArray(value)) {
-
-    return value.map(
-      normalizeObject
-    );
-
+    return value.map(normalizeObject);
   }
 
   if (
@@ -134,7 +98,6 @@ function normalizeObject(value) {
   return value;
 }
 
-
 function safeName(
   value,
   fallback = "ITEM"
@@ -151,29 +114,21 @@ function safeName(
         "_"
       );
 
-
   if (!name) {
     name = fallback;
   }
 
-
   if (
     /^[0-9]/.test(name)
   ) {
-
-    name =
-      "_" + name;
-
+    name = "_" + name;
   }
-
 
   return name.slice(
     0,
     200
   );
-
 }
-
 
 function parseRequest(req) {
 
@@ -182,7 +137,6 @@ function parseRequest(req) {
 
   let baseData =
     req.body?.baseData;
-
 
   if (
     typeof type === "string" &&
@@ -196,32 +150,26 @@ function parseRequest(req) {
 
   }
 
-
   if (
     typeof req.body === "object" &&
     req.body !== null
   ) {
 
     return {
-
       type:
         req.body.typData,
 
       baseData:
         req.body.baseData
-
     };
 
   }
-
 
   return {
     type,
     baseData
   };
-
 }
-
 
 function decodeLocationData(
   baseData
@@ -235,9 +183,7 @@ function decodeLocationData(
 
   }
 
-
   let decoded;
-
 
   try {
 
@@ -258,9 +204,7 @@ function decodeLocationData(
 
   }
 
-
   let data;
-
 
   try {
 
@@ -278,7 +222,6 @@ function decodeLocationData(
 
   }
 
-
   if (
     !data ||
     typeof data !== "object" ||
@@ -291,13 +234,8 @@ function decodeLocationData(
 
   }
 
-
-  return normalizeObject(
-    data
-  );
-
+  return normalizeObject(data);
 }
-
 
 function buildLocationModel(
   locationData
@@ -311,7 +249,6 @@ function buildLocationModel(
   const villagesByPair =
     new Map();
 
-
   for (
     const [
       rawPhc,
@@ -322,17 +259,10 @@ function buildLocationModel(
     )
   ) {
 
-
-    /*
-     * IMPORTANT:
-     * Location values are converted
-     * to RCH __ format here.
-     */
     const phc =
       convertLocationFormat(
         rawPhc
       );
-
 
     if (
       !phc ||
@@ -340,20 +270,14 @@ function buildLocationModel(
       typeof rawSubs !== "object" ||
       Array.isArray(rawSubs)
     ) {
-
       continue;
-
     }
-
 
     if (
       !phcs.includes(phc)
     ) {
-
       phcs.push(phc);
-
     }
-
 
     if (
       !subByPhc.has(phc)
@@ -366,7 +290,6 @@ function buildLocationModel(
 
     }
 
-
     for (
       const [
         rawSub,
@@ -377,28 +300,17 @@ function buildLocationModel(
       )
     ) {
 
-
-      /*
-       * (19593)
-       *     ↓
-       * __19593__
-       */
       const sub =
         convertLocationFormat(
           rawSub
         );
 
-
       if (!sub) {
         continue;
       }
 
-
       const subs =
-        subByPhc.get(
-          phc
-        );
-
+        subByPhc.get(phc);
 
       if (
         !subs.includes(sub)
@@ -408,10 +320,8 @@ function buildLocationModel(
 
       }
 
-
       const pairKey =
         `${phc}|${sub}`;
-
 
       if (
         !villagesByPair.has(
@@ -426,7 +336,6 @@ function buildLocationModel(
 
       }
 
-
       if (
         Array.isArray(
           rawVillages
@@ -438,19 +347,10 @@ function buildLocationModel(
           of rawVillages
         ) {
 
-
-          /*
-           * Village conversion
-           *
-           * Udaipur (10023769)
-           *       ↓
-           * Udaipur__10023769__
-           */
           const village =
             convertLocationFormat(
               rawVillage
             );
-
 
           if (
             village &&
@@ -475,17 +375,13 @@ function buildLocationModel(
 
   }
 
-
-  if (
-    !phcs.length
-  ) {
+  if (!phcs.length) {
 
     throw new Error(
       "No Health Facility/PHC data was supplied."
     );
 
   }
-
 
   if (
     ![
@@ -501,20 +397,18 @@ function buildLocationModel(
 
   }
 
-
   return {
-
     phcs,
-
     subByPhc,
-
     villagesByPair
-
   };
-
 }
 
-
+/*
+=========================================================
+IMPORTANT FIX
+=========================================================
+*/
 function addNamedRange(
   workbook,
   name,
@@ -523,12 +417,11 @@ function addNamedRange(
 ) {
 
   workbook.definedNames.add(
-    `'${sheetName}'!${range}`,
-    name
+    name,
+    `'${sheetName}'!${range}`
   );
 
 }
-
 
 function addListValidation(
   cell,
@@ -561,26 +454,21 @@ function addListValidation(
 
 }
 
-
 function styleHeader(row) {
 
   row.height = 24;
-
 
   row.eachCell(
     (cell) => {
 
       cell.font = {
-
         bold: true,
 
         color: {
           argb:
             "FFFFFFFF"
         }
-
       };
-
 
       cell.fill = {
 
@@ -596,7 +484,6 @@ function styleHeader(row) {
 
       };
 
-
       cell.alignment = {
 
         vertical:
@@ -609,7 +496,6 @@ function styleHeader(row) {
           true
 
       };
-
 
       cell.border = {
 
@@ -660,7 +546,6 @@ function styleHeader(row) {
 
 }
 
-
 function configureMainSheet(
   ws,
   headers
@@ -676,17 +561,14 @@ function configureMainSheet(
     }
   ];
 
-
   ws.getRow(
     1
   ).values =
     headers;
 
-
   styleHeader(
     ws.getRow(1)
   );
-
 
   ws.getColumn(1).width =
     28;
@@ -696,7 +578,6 @@ function configureMainSheet(
 
   ws.getColumn(3).width =
     32;
-
 
   for (
     let c = 4;
@@ -716,12 +597,6 @@ function configureMainSheet(
 
   }
 
-
-  /*
-   * No auto filter.
-   *
-   * A/B/C are dropdowns.
-   */
   for (
     let row = 2;
     row <= MAX_ROWS + 1;
@@ -750,7 +625,6 @@ function configureMainSheet(
 
 }
 
-
 function createWorkbook(
   type,
   locationData
@@ -761,63 +635,48 @@ function createWorkbook(
       locationData
     );
 
-
   const workbook =
     new ExcelJS.Workbook();
-
 
   workbook.creator =
     "SHREE RCH";
 
-
   workbook.created =
     new Date();
-
 
   workbook.modified =
     new Date();
 
-
-  /*
-   * Main
-   * Subcenter
-   * Village
-   */
   const main =
     workbook.addWorksheet(
       "Main"
     );
-
 
   const subcenter =
     workbook.addWorksheet(
       "Subcenter"
     );
 
-
   const village =
     workbook.addWorksheet(
       "Village"
     );
-
 
   const headers =
     type === "child"
       ? CHILD_HEADERS
       : MOTHER_HEADERS;
 
-
   configureMainSheet(
     main,
     headers
   );
 
-
   /*
-   * =========================
-   * SUBCENTER MASTER
-   * =========================
-   */
+   =========================================================
+   SUBCENTER MASTER
+   =========================================================
+  */
 
   subcenter.getRow(
     1
@@ -826,44 +685,32 @@ function createWorkbook(
     "SubCentre"
   ];
 
-
   styleHeader(
     subcenter.getRow(1)
   );
 
-
   subcenter.getColumn(1).width =
     30;
-
 
   subcenter.getColumn(2).width =
     30;
 
-
   subcenter.getColumn(4).width =
     2;
 
-
   subcenter.getColumn(4).hidden =
     true;
-
 
   let subRow = 2;
 
   const phcRangeRows = [];
 
-
-  /*
-   * Keep each PHC's
-   * Subcentres contiguous.
-   */
   for (
     const phc of model.phcs
   ) {
 
     const start =
       subRow;
-
 
     for (
       const sub
@@ -876,18 +723,15 @@ function createWorkbook(
       ).value =
         phc;
 
-
       subcenter.getCell(
         subRow,
         2
       ).value =
         sub;
 
-
       subRow++;
 
     }
-
 
     if (
       subRow > start
@@ -908,14 +752,8 @@ function createWorkbook(
 
   }
 
-
-  /*
-   * PHC list
-   * hidden D column.
-   */
   const phcListStart =
     2;
-
 
   model.phcs.forEach(
     (
@@ -932,14 +770,12 @@ function createWorkbook(
     }
   );
 
-
   addNamedRange(
     workbook,
     "PHC_LIST",
     "Subcenter",
     `$D$${phcListStart}:$D$${phcListStart + model.phcs.length - 1}`
   );
-
 
   phcRangeRows.forEach(
     (
@@ -949,23 +785,19 @@ function createWorkbook(
 
       addNamedRange(
         workbook,
-
         `SC_${index + 1}`,
-
         "Subcenter",
-
         `$B$${item.start}:$B$${item.end}`
       );
 
     }
   );
 
-
   /*
-   * =========================
-   * VILLAGE MASTER
-   * =========================
-   */
+   =========================================================
+   VILLAGE MASTER
+   =========================================================
+  */
 
   village.getRow(
     1
@@ -976,38 +808,30 @@ function createWorkbook(
     "PAIR_KEY"
   ];
 
-
   styleHeader(
     village.getRow(1)
   );
 
-
   village.getColumn(1).width =
     30;
-
 
   village.getColumn(2).width =
     30;
 
-
   village.getColumn(3).width =
     36;
-
 
   village.getColumn(4).width =
     2;
 
-
   village.getColumn(4).hidden =
     true;
-
 
   let villageRow = 2;
 
   const pairRows = [];
 
   const pairList = [];
-
 
   for (
     const phc of model.phcs
@@ -1021,24 +845,18 @@ function createWorkbook(
       const pairKey =
         `${phc}|${sub}`;
 
-
       const villages =
         model.villagesByPair
           .get(pairKey) || [];
 
-
       if (
         !villages.length
       ) {
-
         continue;
-
       }
-
 
       const start =
         villageRow;
-
 
       for (
         const v of villages
@@ -1050,13 +868,11 @@ function createWorkbook(
         ).value =
           phc;
 
-
         village.getCell(
           villageRow,
           2
         ).value =
           sub;
-
 
         village.getCell(
           villageRow,
@@ -1064,18 +880,15 @@ function createWorkbook(
         ).value =
           v;
 
-
         village.getCell(
           villageRow,
           4
         ).value =
           pairKey;
 
-
         villageRow++;
 
       }
-
 
       pairRows.push({
 
@@ -1088,7 +901,6 @@ function createWorkbook(
 
       });
 
-
       pairList.push(
         pairKey
       );
@@ -1096,7 +908,6 @@ function createWorkbook(
     }
 
   }
-
 
   pairList.forEach(
     (
@@ -1113,14 +924,11 @@ function createWorkbook(
     }
   );
 
-
   village.getColumn(5).width =
     2;
 
-
   village.getColumn(5).hidden =
     true;
-
 
   if (
     pairList.length
@@ -1135,7 +943,6 @@ function createWorkbook(
 
   }
 
-
   pairRows.forEach(
     (
       item,
@@ -1144,23 +951,19 @@ function createWorkbook(
 
       addNamedRange(
         workbook,
-
         `V_${index + 1}`,
-
         "Village",
-
         `$C$${item.start}:$C$${item.end}`
       );
 
     }
   );
 
-
   /*
-   * =========================
-   * DEPENDENT DROPDOWNS
-   * =========================
-   */
+   =========================================================
+   DEPENDENT DROPDOWNS
+   =========================================================
+  */
 
   for (
     let row = 2;
@@ -1168,10 +971,10 @@ function createWorkbook(
     row++
   ) {
 
-
     /*
-     * A = PHC
+     * A = Health Facility
      */
+
     addListValidation(
 
       main.getCell(
@@ -1187,10 +990,10 @@ function createWorkbook(
 
     );
 
-
     /*
      * B = SubCentre
      */
+
     addListValidation(
 
       main.getCell(
@@ -1206,10 +1009,10 @@ function createWorkbook(
 
     );
 
-
     /*
      * C = Village
      */
+
     addListValidation(
 
       main.getCell(
@@ -1227,10 +1030,6 @@ function createWorkbook(
 
   }
 
-
-  /*
-   * No filters.
-   */
   subcenter.autoFilter =
     undefined;
 
@@ -1240,11 +1039,9 @@ function createWorkbook(
   main.autoFilter =
     undefined;
 
-
   return workbook;
 
 }
-
 
 async function readBody(
   req
@@ -1259,9 +1056,7 @@ async function readBody(
 
   }
 
-
   const chunks = [];
-
 
   for await (
     const chunk of req
@@ -1273,17 +1068,14 @@ async function readBody(
 
   }
 
-
   const raw =
     Buffer
       .concat(chunks)
       .toString("utf8");
 
-
   if (!raw) {
     return {};
   }
-
 
   const contentType =
     String(
@@ -1291,7 +1083,6 @@ async function readBody(
         "content-type"
       ] || ""
     );
-
 
   if (
     contentType.includes(
@@ -1305,12 +1096,10 @@ async function readBody(
 
   }
 
-
   const params =
     new URLSearchParams(
       raw
     );
-
 
   return Object.fromEntries(
     params.entries()
@@ -1318,37 +1107,31 @@ async function readBody(
 
 }
 
-
 module.exports =
   async function handler(
     req,
     res
   ) {
 
-
     res.setHeader(
       "Access-Control-Allow-Origin",
       ALLOW_ORIGIN
     );
-
 
     res.setHeader(
       "Access-Control-Allow-Methods",
       "POST, OPTIONS"
     );
 
-
     res.setHeader(
       "Access-Control-Allow-Headers",
       "Content-Type"
     );
 
-
     res.setHeader(
       "Cache-Control",
       "no-store"
     );
-
 
     if (
       req.method === "OPTIONS"
@@ -1359,7 +1142,6 @@ module.exports =
       return;
 
     }
-
 
     if (
       req.method === "GET"
@@ -1385,7 +1167,6 @@ module.exports =
 
     }
 
-
     if (
       req.method !== "POST"
     ) {
@@ -1403,7 +1184,6 @@ module.exports =
 
     }
 
-
     try {
 
       const body =
@@ -1411,12 +1191,10 @@ module.exports =
           req
         );
 
-
       const type =
         clean(
           body.typData
         ).toLowerCase();
-
 
       if (
         type !== "mother" &&
@@ -1429,12 +1207,10 @@ module.exports =
 
       }
 
-
       const locationData =
         decodeLocationData(
           body.baseData
         );
-
 
       const workbook =
         createWorkbook(
@@ -1442,31 +1218,25 @@ module.exports =
           locationData
         );
 
-
       const buffer =
         await workbook.xlsx.writeBuffer();
-
 
       const filename =
         type === "child"
           ? "SHREE_RCH_Child_Formate.xlsx"
           : "SHREE_RCH_Mother_Formate.xlsx";
 
-
       res.status(200);
-
 
       res.setHeader(
         "Content-Type",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       );
 
-
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="${filename}"`
       );
-
 
       res.send(
         Buffer.from(
@@ -1481,7 +1251,6 @@ module.exports =
         "SHREE RCH Template API:",
         error
       );
-
 
       res.status(400).json({
 
