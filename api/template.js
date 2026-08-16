@@ -44,7 +44,7 @@ const CHILD_HEADERS = [
 ];
 
 /* =========================================================
-   1. STRING & RCH FORMATTER UTILITIES
+   1. RCH FORMATTERS & PATTERN MATCHERS
    ========================================================= */
 
 function clean(value) {
@@ -53,24 +53,27 @@ function clean(value) {
     .trim();
 }
 
-// Cell me display hone wala text format
+// Display String Formatter (Cell content in sheet)
+// Converts hyphens & spaces to '_', brackets to '__'
 function formatRCHName(value) {
   if (value === null || value === undefined) return "";
+  let str = String(value).trim();
   
-  return String(value)
-    .trim()
-    .replace(/\s+/g, "_")
+  if (str === "--ALL--" || str === "__ALL__") return "__ALL__";
+
+  return str
+    .replace(/[\s\-]+/g, "_")
     .replace(/\(/g, "__")
     .replace(/\)/g, "__");
 }
 
-// EXCEL NAMED RANGE SAFE IDENTIFIER (Fixes "Removed Records" Error)
-function sanitizeNamedRangeName(name) {
+// Excel Defined Name Sanitizer (For internal XML rules)
+function sanitizeNamedRange(name) {
   if (!name) return "_EMPTY_";
-
+  
   let sanitized = String(name)
-    .replace(/[^a-zA-Z0-9_]/g, "_") // Asterisk (*) aur baaki non-alphanumeric chars ko _ banata hai
-    .replace(/^[^a-zA-Z_]/, "_$&");  // Ensure karta hai starting character valid ho
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .replace(/^[^a-zA-Z_]/, "_$&");
 
   return sanitized;
 }
@@ -129,7 +132,7 @@ function getColumnLetter(colIndex) {
 }
 
 /* =========================================================
-   4. WORKBOOK BUILDER (FIXED DEFINED NAMES)
+   4. WORKBOOK BUILDER
    ========================================================= */
 
 function createWorkbook(type, locationData) {
@@ -151,19 +154,19 @@ function createWorkbook(type, locationData) {
     main.getColumn(c).width = Math.max(16, headers[c - 1].length + 4);
   }
 
-  // Build Subcenter & Village Structure
-  const rawPhcs = Object.keys(locationData);
-  const formattedPhcList = [];
-
+  // Set Default Header Values
   subcenter.getCell(1, 1).value = "__ALL__";
   village.getCell(1, 1).value = "__ALL__";
+
+  const rawPhcs = Object.keys(locationData);
+  const formattedPhcList = [];
   
   let subCol = 2;
   let villageCol = 2;
 
   rawPhcs.forEach(rawPhc => {
     const phcFormatted = formatRCHName(rawPhc);
-    const phcSafeName = sanitizeNamedRangeName(phcFormatted);
+    const phcSafeName = sanitizeNamedRange(phcFormatted);
     if (!phcFormatted) return;
 
     formattedPhcList.push(phcFormatted);
@@ -177,7 +180,7 @@ function createWorkbook(type, locationData) {
 
     rawSubKeys.forEach(rawSub => {
       const subFormatted = formatRCHName(rawSub);
-      const subSafeName = sanitizeNamedRangeName(subFormatted);
+      const subSafeName = sanitizeNamedRange(subFormatted);
       if (!subFormatted) return;
 
       subcenter.getCell(subRow, subCol).value = subFormatted;
@@ -198,52 +201,52 @@ function createWorkbook(type, locationData) {
       }
       village.getCell(vRow, villageCol).value = "__ALL__";
 
-      // Add SAFE Named Range for Subcentre -> Village List
+      // Add Defined Range for Subcentre -> Village
       const vColLetter = getColumnLetter(villageCol);
       const vMaxRow = Math.max(vRow, 2);
       
       try {
         workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subSafeName);
       } catch (e) {
-        console.error("Named range error:", subSafeName, e);
+        console.error("Named range error (Village):", subSafeName, e);
       }
 
       villageCol++;
     });
 
-    // Add SAFE Named Range for PHC -> Subcentre List
+    // Add Defined Range for PHC -> Subcentre
     const sColLetter = getColumnLetter(subCol);
     const sMaxRow = Math.max(subRow - 1, 2);
     
     try {
       workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcSafeName);
     } catch (e) {
-      console.error("Named range error:", phcSafeName, e);
+      console.error("Named range error (Subcentre):", phcSafeName, e);
     }
 
     subCol++;
   });
 
-  // Dynamic Data Validation
+  // Dynamic Data Validation Rules
   if (formattedPhcList.length > 0) {
     const phcFormula = `"${["__ALL__", ...formattedPhcList].join(",")}"`;
 
     for (let row = 2; row <= MAX_ROWS + 1; row++) {
-      // Health Facility Dropdown
+      // Column A: Health Facility
       main.getCell(`A${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [phcFormula]
       };
 
-      // SubCentre Dropdown
+      // Column B: SubCentre
       main.getCell(`B${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [`INDIRECT(A${row})`]
       };
 
-      // Village Dropdown
+      // Column C: Village
       main.getCell(`C${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
@@ -256,7 +259,7 @@ function createWorkbook(type, locationData) {
 }
 
 /* =========================================================
-   5. REQUEST PARSER & HANDLER
+   5. REQUEST HANDLER
    ========================================================= */
 
 async function readBody(req) {
