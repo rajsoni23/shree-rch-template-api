@@ -44,7 +44,7 @@ const CHILD_HEADERS = [
 ];
 
 /* =========================================================
-   1. STRICT RCH UNDERSCORE NORMALIZER
+   1. STRING & NAMED RANGE FORMATTERS
    ========================================================= */
 
 function clean(value) {
@@ -53,17 +53,16 @@ function clean(value) {
     .trim();
 }
 
-// Strictly fixes 2 vs 3 vs 4 underscores mismatch
+// Cell me likhne ke liye exact format (Text___*___ID__)
 function formatRCHName(value) {
   if (value === null || value === undefined) return "";
   let str = String(value).trim();
 
   if (str === "--ALL--" || str === "__ALL__") return "__ALL__";
 
-  // Standardize spaces and hyphens first
   str = str.replace(/[\s\-]+/g, "_");
 
-  // Fix asterisk spacing: Text___*___ID__
+  // Fix asterisk spacing: Text___*___ID__ (3 underscores after *)
   if (str.includes("*")) {
     const parts = str.split("*");
     const left = parts[0].replace(/_+/g, "_").replace(/_$/, "");
@@ -80,6 +79,18 @@ function formatRCHName(value) {
   }
 
   return str.replace(/_+/g, "_");
+}
+
+// Defined Name identifier ke liye STRICT Excel-safe Rule (No '*', No special chars)
+function sanitizeNamedRange(name) {
+  if (!name) return "_EMPTY_";
+  
+  let sanitized = String(name)
+    .replace(/[^a-zA-Z0-9_]/g, "_") // Asterisk '*' aur baki special chars -> '_' banenge
+    .replace(/_+/g, "_")            // Multiple underscores clean
+    .replace(/^[^a-zA-Z_]/, "_$&");  // Must start with letter or underscore
+
+  return sanitized;
 }
 
 function normalizeObject(value) {
@@ -149,7 +160,7 @@ function createWorkbook(type, locationData) {
 
   const headers = type === "child" ? CHILD_HEADERS : MOTHER_HEADERS;
   
-  // Format 'main' header row
+  // Main sheet headers
   main.views = [{ state: "frozen", ySplit: 1 }];
   main.getRow(1).values = headers;
   main.getRow(1).height = 24;
@@ -169,6 +180,7 @@ function createWorkbook(type, locationData) {
 
   rawPhcs.forEach(rawPhc => {
     const phcFormatted = formatRCHName(rawPhc);
+    const phcSafeName = sanitizeNamedRange(phcFormatted);
     if (!phcFormatted) return;
 
     formattedPhcList.push(phcFormatted);
@@ -182,6 +194,7 @@ function createWorkbook(type, locationData) {
 
     rawSubKeys.forEach(rawSub => {
       const subFormatted = formatRCHName(rawSub);
+      const subSafeName = sanitizeNamedRange(subFormatted);
       if (!subFormatted) return;
 
       subcenter.getCell(subRow, subCol).value = subFormatted;
@@ -202,27 +215,27 @@ function createWorkbook(type, locationData) {
       }
       village.getCell(vRow, villageCol).value = "__ALL__";
 
-      // Add Defined Name for Subcentre -> Village
+      // Defined Range for Subcentre -> Village (Using Safe Range Name without '*')
       const vColLetter = getColumnLetter(villageCol);
       const vMaxRow = Math.max(vRow, 2);
       
       try {
-        workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subFormatted);
+        workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subSafeName);
       } catch (e) {
-        console.error("Named range error:", subFormatted, e);
+        console.error("Named range error:", subSafeName, e);
       }
 
       villageCol++;
     });
 
-    // Add Defined Name for PHC -> Subcentre
+    // Defined Range for PHC -> Subcentre (Using Safe Range Name without '*')
     const sColLetter = getColumnLetter(subCol);
     const sMaxRow = Math.max(subRow - 1, 2);
     
     try {
-      workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcFormatted);
+      workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcSafeName);
     } catch (e) {
-      console.error("Named range error:", phcFormatted, e);
+      console.error("Named range error:", phcSafeName, e);
     }
 
     subCol++;
@@ -232,7 +245,7 @@ function createWorkbook(type, locationData) {
   if (formattedPhcList.length > 0) {
     const phcFormula = `"${["__ALL__", ...formattedPhcList].join(",")}"`;
 
-    for (row = 2; row <= MAX_ROWS + 1; row++) {
+    for (let row = 2; row <= MAX_ROWS + 1; row++) {
       // Column A: Health Facility
       main.getCell(`A${row}`).dataValidation = {
         type: "list",
