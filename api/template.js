@@ -44,7 +44,7 @@ const CHILD_HEADERS = [
 ];
 
 /* =========================================================
-   1. STRING & NAMED RANGE FORMATTERS
+   1. RCH PARSER & FORMATTERS
    ========================================================= */
 
 function clean(value) {
@@ -53,67 +53,73 @@ function clean(value) {
     .trim();
 }
 
-// Universal RCH Formatter: Clean brackets, deduplicate IDs, handle asterisks
-function formatRCHName(value) {
-  if (value === null || value === undefined) return "";
-  let str = String(value).trim();
+// Extracts ID and converts text into clean standard format
+function extractIdFormat(segment) {
+  if (!segment) return "";
+  let str = String(segment).trim().replace(/[\s\-]+/g, "_");
 
-  if (!str || str === "ALL" || str === "--ALL--" || str === "__ALL__") {
-    return "__ALL__";
-  }
-
-  const hasAsterisk = str.includes("*");
-
-  // Extract digits and handle duplicate/concatenated IDs (e.g. 1001072910010729 or 10023790_10023790)
   const digitMatches = str.match(/\d+/g);
-  let singleId = "";
-
-  if (digitMatches && digitMatches.length > 0) {
-    let fullDigitStr = digitMatches.join("");
-    if (fullDigitStr.length >= 10 && fullDigitStr.length % 2 === 0) {
-      let halfLen = fullDigitStr.length / 2;
-      let firstHalf = fullDigitStr.substring(0, halfLen);
-      let secondHalf = fullDigitStr.substring(halfLen);
-      if (firstHalf === secondHalf) {
-        singleId = firstHalf;
-      } else {
-        const idMatch = str.match(/\d{5,8}/);
-        singleId = idMatch ? idMatch[0] : digitMatches[0];
-      }
-    } else {
-      const idMatch = str.match(/\d{5,8}/);
-      singleId = idMatch ? idMatch[0] : digitMatches[0];
-    }
+  if (!digitMatches) {
+    return str.replace(/[\(\)\*]+/g, "").replace(/_+/g, "_").replace(/^|_$/g, "");
   }
 
-  // Extract clean text (strip brackets, extra underscores, asterisks, numbers)
-  let mainText = str
-    .replace(/\([^)]*\)?/g, "")
+  const id = digitMatches[digitMatches.length - 1];
+  const idPos = str.lastIndexOf(id);
+  const rawText = str.substring(0, idPos);
+
+  let cleanText = rawText
     .replace(/[\(\)\*\d]+/g, " ")
     .replace(/_+/g, " ")
     .trim()
     .replace(/\s+/g, "_");
 
-  if (!singleId) {
-    return mainText || str;
+  if (!cleanText) {
+    return `${id}__`;
   }
 
-  if (!mainText) {
-    return hasAsterisk ? `___*___${singleId}__` : singleId;
-  }
-
-  return hasAsterisk ? `${mainText}___*___${singleId}__` : `${mainText}__${singleId}__`;
+  return `${cleanText}__${id}__`;
 }
 
-// Defined Name identifier for Excel XML (Strictly Alphanumeric + Underscores)
+// Universal RCH String Formatter
+function formatRCHName(value) {
+  if (value === null || value === undefined) return "";
+  let str = String(value).trim();
+
+  if (str === "ALL" || str === "--ALL--" || str === "__ALL__") return "__ALL__";
+
+  str = str.replace(/[\s\-]+/g, "_");
+
+  if (str.includes("*")) {
+    const parts = str.split("*");
+    const rawLeft = parts[0].replace(/_+/g, "_").replace(/_$/, "");
+
+    const rightDigits = parts[1].match(/\d+/);
+    const rightId = rightDigits 
+      ? rightDigits[0] 
+      : parts[1].replace(/[()]/g, "").replace(/_+/g, "_").replace(/^|_$/g, "");
+
+    const leftFormatted = extractIdFormat(rawLeft);
+
+    // Pattern 1: Dual-ID Asterisk -> "Name__ID1_*__ID2_"
+    if (leftFormatted.endsWith("__")) {
+      return `${leftFormatted.slice(0, -1)}*__${rightId}_`;
+    }
+
+    // Pattern 2: Single-ID Asterisk -> "Name___*___ID__"
+    return `${leftFormatted}___*___${rightId}__`;
+  }
+
+  // Pattern 3: Standard / Unclosed Brackets -> "Name__ID__"
+  return extractIdFormat(str);
+}
+
+// Sanitizer for Excel Named Ranges
 function sanitizeNamedRange(name) {
   if (!name) return "_EMPTY_";
 
-  let sanitized = String(name)
+  return String(name)
     .replace(/[^a-zA-Z0-9_]/g, "_")
     .replace(/^[^a-zA-Z_]/, "_$&");
-
-  return sanitized;
 }
 
 function normalizeObject(value) {
@@ -131,7 +137,7 @@ function normalizeObject(value) {
 }
 
 /* =========================================================
-   2. DECODE BASE64 DATA
+   2. DATA DECODER & HELPERS
    ========================================================= */
 
 function decodeLocationData(baseData) {
@@ -154,10 +160,6 @@ function decodeLocationData(baseData) {
   return normalizeObject(data);
 }
 
-/* =========================================================
-   3. EXCEL COLUMN HELPER
-   ========================================================= */
-
 function getColumnLetter(colIndex) {
   let temp;
   let letter = "";
@@ -170,7 +172,7 @@ function getColumnLetter(colIndex) {
 }
 
 /* =========================================================
-   4. WORKBOOK BUILDER
+   3. WORKBOOK GENERATOR
    ========================================================= */
 
 function createWorkbook(type, locationData) {
@@ -183,7 +185,6 @@ function createWorkbook(type, locationData) {
 
   const headers = type === "child" ? CHILD_HEADERS : MOTHER_HEADERS;
 
-  // Main sheet headers
   main.views = [{ state: "frozen", ySplit: 1 }];
   main.getRow(1).values = headers;
   main.getRow(1).height = 24;
@@ -223,7 +224,6 @@ function createWorkbook(type, locationData) {
       subcenter.getCell(subRow, subCol).value = subFormatted;
       subRow++;
 
-      // Process Villages for this Subcentre
       village.getCell(1, villageCol).value = subFormatted;
       const rawVillages = rawSubs[rawSub] || [];
 
@@ -238,7 +238,6 @@ function createWorkbook(type, locationData) {
       }
       village.getCell(vRow, villageCol).value = "__ALL__";
 
-      // Defined Range for Subcentre -> Village
       const vColLetter = getColumnLetter(villageCol);
       const vMaxRow = Math.max(vRow, 2);
 
@@ -248,13 +247,12 @@ function createWorkbook(type, locationData) {
           subSafeName
         );
       } catch (e) {
-        console.error("Named range error:", subSafeName, e);
+        console.error("Named range error (Subcentre):", subSafeName, e);
       }
 
       villageCol++;
     });
 
-    // Defined Range for PHC -> Subcentre
     const sColLetter = getColumnLetter(subCol);
     const sMaxRow = Math.max(subRow - 1, 2);
 
@@ -264,32 +262,32 @@ function createWorkbook(type, locationData) {
         phcSafeName
       );
     } catch (e) {
-      console.error("Named range error:", phcSafeName, e);
+      console.error("Named range error (PHC):", phcSafeName, e);
     }
 
     subCol++;
   });
 
-  // Dynamic Data Validation Rules with SUBSTITUTE for Asterisk Safety
+  // Dynamic Data Validation Formulae with Asterisk Safe Substitutions
   if (formattedPhcList.length > 0) {
     const phcFormula = `"${["__ALL__", ...formattedPhcList].join(",")}"`;
 
     for (let row = 2; row <= MAX_ROWS + 1; row++) {
-      // Column A: Health Facility
+      // Health Facility
       main.getCell(`A${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [phcFormula],
       };
 
-      // Column B: SubCentre (Handles '*' removal during INDIRECT lookup)
+      // SubCentre (Dependent Dropdown)
       main.getCell(`B${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [`INDIRECT(SUBSTITUTE(A${row}, "*", "_"))`],
       };
 
-      // Column C: Village (Handles '*' removal during INDIRECT lookup)
+      // Village (Dependent Dropdown)
       main.getCell(`C${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
@@ -302,7 +300,7 @@ function createWorkbook(type, locationData) {
 }
 
 /* =========================================================
-   5. REQUEST HANDLER
+   4. API HANDLER
    ========================================================= */
 
 async function readBody(req) {
@@ -348,7 +346,7 @@ module.exports = async function handler(req, res) {
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(Buffer.from(buffer));
   } catch (error) {
-    console.error("RCH API Error:", error);
+    console.error("RCH Backend Error:", error);
     res.status(400).json({ ok: false, error: error.message });
   }
 };
