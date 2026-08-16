@@ -53,7 +53,6 @@ function clean(value) {
     .trim();
 }
 
-// Extracts ID and converts text into clean standard format
 function extractIdFormat(segment) {
   if (!segment) return "";
   let str = String(segment).trim().replace(/[\s\-]+/g, "_");
@@ -80,7 +79,6 @@ function extractIdFormat(segment) {
   return `${cleanText}__${id}__`;
 }
 
-// Universal RCH String Formatter
 function formatRCHName(value) {
   if (value === null || value === undefined) return "";
   let str = String(value).trim();
@@ -100,20 +98,16 @@ function formatRCHName(value) {
 
     const leftFormatted = extractIdFormat(rawLeft);
 
-    // Pattern 1: Dual-ID Asterisk -> "Name__ID1_*__ID2_"
     if (leftFormatted.endsWith("__")) {
       return `${leftFormatted.slice(0, -1)}*__${rightId}_`;
     }
 
-    // Pattern 2: Single-ID Asterisk -> "Name___*___ID__"
     return `${leftFormatted}___*___${rightId}__`;
   }
 
-  // Pattern 3: Standard / Unclosed Brackets -> "Name__ID__"
   return extractIdFormat(str);
 }
 
-// Sanitizer for Excel Named Ranges
 function sanitizeNamedRange(name) {
   if (!name) return "_EMPTY_";
 
@@ -193,11 +187,11 @@ function createWorkbook(type, locationData) {
     main.getColumn(c).width = Math.max(16, headers[c - 1].length + 4);
   }
 
-  subcenter.getCell(1, 1).value = "__ALL__";
-  village.getCell(1, 1).value = "__ALL__";
-
   const rawPhcs = Object.keys(locationData);
-  const formattedPhcList = [];
+  
+  // FIX #1: PHC Master List in subcenter Column A to prevent 255-char cutoff limit
+  subcenter.getCell(1, 1).value = "__ALL__";
+  let phcMasterRow = 2;
 
   let subCol = 2;
   let villageCol = 2;
@@ -207,7 +201,10 @@ function createWorkbook(type, locationData) {
     const phcSafeName = sanitizeNamedRange(phcFormatted);
     if (!phcFormatted) return;
 
-    formattedPhcList.push(phcFormatted);
+    // Add PHC to Column A Master List
+    subcenter.getCell(phcMasterRow++, 1).value = phcFormatted;
+
+    // Header for Subcentre columns
     subcenter.getCell(1, subCol).value = phcFormatted;
 
     const rawSubs = locationData[rawPhc] || {};
@@ -221,33 +218,45 @@ function createWorkbook(type, locationData) {
       const subSafeName = sanitizeNamedRange(subFormatted);
       if (!subFormatted) return;
 
-      subcenter.getCell(subRow, subCol).value = subFormatted;
-      subRow++;
+      subcenter.getCell(subRow++, subCol).value = subFormatted;
 
+      // Header for Village columns
       village.getCell(1, villageCol).value = subFormatted;
+      
+      // FIX #2: Handle both Array and Object formats for Village list
       const rawVillages = rawSubs[rawSub] || [];
+      let villageList = [];
+      if (Array.isArray(rawVillages)) {
+        villageList = rawVillages;
+      } else if (rawVillages && typeof rawVillages === "object") {
+        villageList = Object.entries(rawVillages).map(([k, v]) => 
+          (typeof v === "string" && v.trim() ? v : k)
+        );
+      }
 
       let vRow = 2;
-      if (Array.isArray(rawVillages) && rawVillages.length > 0) {
-        rawVillages.forEach((rawV) => {
+      village.getCell(vRow++, villageCol).value = "__ALL__"; // "__ALL__" placed at top
+
+      if (villageList.length > 0) {
+        villageList.forEach((rawV) => {
           const vFormatted = formatRCHName(rawV);
-          if (vFormatted) {
+          if (vFormatted && vFormatted !== "__ALL__") {
             village.getCell(vRow++, villageCol).value = vFormatted;
           }
         });
       }
-      village.getCell(vRow, villageCol).value = "__ALL__";
 
+      // FIX #3: Defined Range starts at Row 2 (skips header)
       const vColLetter = getColumnLetter(villageCol);
-      const vMaxRow = Math.max(vRow, 2);
+      const vMaxRow = Math.max(vRow - 1, 2);
 
       try {
         workbook.definedNames.add(
-          `'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`,
+          `'Village'!$${vColLetter}$2:$${vColLetter}$${vMaxRow}`,
           subSafeName
         );
       } catch (e) {
-        console.error("Named range error (Subcentre):", subSafeName, e);
+        console.error("Named range error (Village):", subSafeName, e);
       }
 
       villageCol++;
@@ -268,32 +277,39 @@ function createWorkbook(type, locationData) {
     subCol++;
   });
 
-  // Dynamic Data Validation Formulae with Asterisk Safe Substitutions
-  if (formattedPhcList.length > 0) {
-    const phcFormula = `"${["__ALL__", ...formattedPhcList].join(",")}"`;
+  // PHC List Named Range for Column A Master List
+  const phcMaxRow = Math.max(phcMasterRow - 1, 1);
+  try {
+    workbook.definedNames.add(
+      `'subcenter'!$A$1:$A$${phcMaxRow}`,
+      "PHC_LIST"
+    );
+  } catch (e) {
+    console.error("Named range error (PHC_LIST):", e);
+  }
 
-    for (let row = 2; row <= MAX_ROWS + 1; row++) {
-      // Health Facility
-      main.getCell(`A${row}`).dataValidation = {
-        type: "list",
-        allowBlank: true,
-        formulae: [phcFormula],
-      };
+  // Dynamic Data Validation Rules
+  for (let row = 2; row <= MAX_ROWS + 1; row++) {
+    // Health Facility (Uses Range instead of Inline String)
+    main.getCell(`A${row}`).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: ["PHC_LIST"],
+    };
 
-      // SubCentre (Dependent Dropdown)
-      main.getCell(`B${row}`).dataValidation = {
-        type: "list",
-        allowBlank: true,
-        formulae: [`INDIRECT(SUBSTITUTE(A${row}, "*", "_"))`],
-      };
+    // SubCentre (Dependent Dropdown)
+    main.getCell(`B${row}`).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [`INDIRECT(SUBSTITUTE(A${row}, "*", "_"))`],
+    };
 
-      // Village (Dependent Dropdown)
-      main.getCell(`C${row}`).dataValidation = {
-        type: "list",
-        allowBlank: true,
-        formulae: [`INDIRECT(SUBSTITUTE(B${row}, "*", "_"))`],
-      };
-    }
+    // Village (Dependent Dropdown)
+    main.getCell(`C${row}`).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [`INDIRECT(SUBSTITUTE(B${row}, "*", "_"))`],
+    };
   }
 
   return workbook;
