@@ -454,8 +454,8 @@ module.exports = async function handler(req, res) {
 
     const filename =
       type === "child"
-        ? "SHREE_RCH_Child_Template.xlsx"
-        : "SHREE_RCH_Mother_Template.xlsx";
+        ? "SHREE_RCH_Child_Formate.xlsx"
+        : "SHREE_RCH_Mother_Formate.xlsx";
 
     res.status(200);
     res.setHeader(
