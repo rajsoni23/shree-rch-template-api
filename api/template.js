@@ -53,7 +53,7 @@ function clean(value) {
     .trim();
 }
 
-// Exact RCH Transformation Logic
+// Cell me display hone wala text format
 function formatRCHName(value) {
   if (value === null || value === undefined) return "";
   
@@ -62,6 +62,17 @@ function formatRCHName(value) {
     .replace(/\s+/g, "_")
     .replace(/\(/g, "__")
     .replace(/\)/g, "__");
+}
+
+// EXCEL NAMED RANGE SAFE IDENTIFIER (Fixes "Removed Records" Error)
+function sanitizeNamedRangeName(name) {
+  if (!name) return "_EMPTY_";
+
+  let sanitized = String(name)
+    .replace(/[^a-zA-Z0-9_]/g, "_") // Asterisk (*) aur baaki non-alphanumeric chars ko _ banata hai
+    .replace(/^[^a-zA-Z_]/, "_$&");  // Ensure karta hai starting character valid ho
+
+  return sanitized;
 }
 
 function normalizeObject(value) {
@@ -103,7 +114,7 @@ function decodeLocationData(baseData) {
 }
 
 /* =========================================================
-   3. EXCEL COLUMN HELPER (1 -> A, 2 -> B, 27 -> AA)
+   3. EXCEL COLUMN HELPER
    ========================================================= */
 
 function getColumnLetter(colIndex) {
@@ -118,7 +129,7 @@ function getColumnLetter(colIndex) {
 }
 
 /* =========================================================
-   4. WORKBOOK BUILDER (EXACT mother_Registration.xlsx MATCH)
+   4. WORKBOOK BUILDER (FIXED DEFINED NAMES)
    ========================================================= */
 
 function createWorkbook(type, locationData) {
@@ -140,7 +151,7 @@ function createWorkbook(type, locationData) {
     main.getColumn(c).width = Math.max(16, headers[c - 1].length + 4);
   }
 
-  // Build Subcenter & Village Named Ranges
+  // Build Subcenter & Village Structure
   const rawPhcs = Object.keys(locationData);
   const formattedPhcList = [];
 
@@ -152,6 +163,7 @@ function createWorkbook(type, locationData) {
 
   rawPhcs.forEach(rawPhc => {
     const phcFormatted = formatRCHName(rawPhc);
+    const phcSafeName = sanitizeNamedRangeName(phcFormatted);
     if (!phcFormatted) return;
 
     formattedPhcList.push(phcFormatted);
@@ -165,13 +177,14 @@ function createWorkbook(type, locationData) {
 
     rawSubKeys.forEach(rawSub => {
       const subFormatted = formatRCHName(rawSub);
+      const subSafeName = sanitizeNamedRangeName(subFormatted);
       if (!subFormatted) return;
 
       subcenter.getCell(subRow, subCol).value = subFormatted;
       subRow++;
 
       // Process Villages for this Subcentre
-      village.getCell(1, villageCol).value = subFormatted; // Range reference header
+      village.getCell(1, villageCol).value = subFormatted;
       const rawVillages = rawSubs[rawSub] || [];
 
       let vRow = 2;
@@ -185,28 +198,27 @@ function createWorkbook(type, locationData) {
       }
       village.getCell(vRow, villageCol).value = "__ALL__";
 
-      // Add Named Range for Subcentre -> Village list
-      // Matches EXACT template rule ($1 to max row)
+      // Add SAFE Named Range for Subcentre -> Village List
       const vColLetter = getColumnLetter(villageCol);
       const vMaxRow = Math.max(vRow, 2);
       
       try {
-        workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subFormatted);
+        workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subSafeName);
       } catch (e) {
-        console.error("Named range creation error:", subFormatted, e);
+        console.error("Named range error:", subSafeName, e);
       }
 
       villageCol++;
     });
 
-    // Add Named Range for Health Facility -> Subcentre list
+    // Add SAFE Named Range for PHC -> Subcentre List
     const sColLetter = getColumnLetter(subCol);
     const sMaxRow = Math.max(subRow - 1, 2);
     
     try {
-      workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcFormatted);
+      workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcSafeName);
     } catch (e) {
-      console.error("Named range creation error:", phcFormatted, e);
+      console.error("Named range error:", phcSafeName, e);
     }
 
     subCol++;
@@ -217,21 +229,21 @@ function createWorkbook(type, locationData) {
     const phcFormula = `"${["__ALL__", ...formattedPhcList].join(",")}"`;
 
     for (let row = 2; row <= MAX_ROWS + 1; row++) {
-      // Health Facility (Column A)
+      // Health Facility Dropdown
       main.getCell(`A${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [phcFormula]
       };
 
-      // SubCentre (Column B) -> INDIRECT(A2)
+      // SubCentre Dropdown
       main.getCell(`B${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [`INDIRECT(A${row})`]
       };
 
-      // Village (Column C) -> INDIRECT(B2)
+      // Village Dropdown
       main.getCell(`C${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
@@ -244,7 +256,7 @@ function createWorkbook(type, locationData) {
 }
 
 /* =========================================================
-   5. REQUEST PARSER & API HANDLER
+   5. REQUEST PARSER & HANDLER
    ========================================================= */
 
 async function readBody(req) {
