@@ -53,7 +53,11 @@ function clean(value) {
     .trim();
 }
 
-// Cell me likhne ke liye exact format (Text___*___ID__)
+// Cell me likhne ke liye exact format (Text__ID__)
+// FIX #1: ab bracket wale IDs jaise "Name (1234)" ya "Name(1234)" ko
+// bhi sahi se "Name__1234__" me convert karta hai (pehle ye sirf
+// trailing digits handle karta tha, bracket ")" ke wajah se match
+// fail ho jaata tha aur naam bracket ke saath hi reh jaata tha).
 function formatRCHName(value) {
   if (value === null || value === undefined) return "";
   let str = String(value).trim();
@@ -66,11 +70,24 @@ function formatRCHName(value) {
   if (str.includes("*")) {
     const parts = str.split("*");
     const left = parts[0].replace(/_+/g, "_").replace(/_$/, "");
-    const right = parts[1].replace(/_+/g, "_").replace(/^_/, "").replace(/_$/, "");
+    const right = parts[1]
+      .replace(/[()]/g, "")
+      .replace(/_+/g, "_")
+      .replace(/^_/, "")
+      .replace(/_$/, "");
     return `${left}___*___${right}__`;
   }
 
-  // Normal Text__ID__ pattern (Exactly 2 underscores before ID)
+  // NEW: ID bracket ke andar ho to pehle usko nikaalo
+  // e.g. "BAGHAURA_(3181)" -> "BAGHAURA__3181__"
+  const parenMatch = str.match(/^(.*?)_?\(([0-9]+)\)_*$/);
+  if (parenMatch) {
+    const mainText = parenMatch[1].replace(/_+/g, "_").replace(/_$/, "");
+    const id = parenMatch[2];
+    return `${mainText}__${id}__`;
+  }
+
+  // Normal Text__ID__ pattern (trailing digits, no brackets)
   const idMatch = str.match(/^(.*?)_?([0-9]+)_*$/);
   if (idMatch) {
     const mainText = idMatch[1].replace(/_+/g, "_").replace(/_$/, "");
@@ -82,13 +99,16 @@ function formatRCHName(value) {
 }
 
 // Defined Name identifier ke liye STRICT Excel-safe Rule (No '*', No special chars)
+// FIX #2: multiple-underscore collapse (`.replace(/_+/g, "_")`) hata diya gaya hai.
+// formatRCHName() jo double-underscore pattern (__ID__) banata hai, wahi pattern
+// yahan bhi as-is rehna chahiye, warna named range ka naam aur dropdown me
+// dikhne wala text kabhi match nahi karega aur INDIRECT() fail ho jaayega.
 function sanitizeNamedRange(name) {
   if (!name) return "_EMPTY_";
-  
+
   let sanitized = String(name)
     .replace(/[^a-zA-Z0-9_]/g, "_") // Asterisk '*' aur baki special chars -> '_' banenge
-    .replace(/_+/g, "_")            // Multiple underscores clean
-    .replace(/^[^a-zA-Z_]/, "_$&");  // Must start with letter or underscore
+    .replace(/^[^a-zA-Z_]/, "_$&"); // Must start with letter or underscore
 
   return sanitized;
 }
@@ -159,7 +179,7 @@ function createWorkbook(type, locationData) {
   const village = workbook.addWorksheet("Village");
 
   const headers = type === "child" ? CHILD_HEADERS : MOTHER_HEADERS;
-  
+
   // Main sheet headers
   main.views = [{ state: "frozen", ySplit: 1 }];
   main.getRow(1).values = headers;
@@ -174,11 +194,11 @@ function createWorkbook(type, locationData) {
 
   const rawPhcs = Object.keys(locationData);
   const formattedPhcList = [];
-  
+
   let subCol = 2;
   let villageCol = 2;
 
-  rawPhcs.forEach(rawPhc => {
+  rawPhcs.forEach((rawPhc) => {
     const phcFormatted = formatRCHName(rawPhc);
     const phcSafeName = sanitizeNamedRange(phcFormatted);
     if (!phcFormatted) return;
@@ -192,7 +212,7 @@ function createWorkbook(type, locationData) {
     let subRow = 2;
     subcenter.getCell(subRow++, subCol).value = "__ALL__";
 
-    rawSubKeys.forEach(rawSub => {
+    rawSubKeys.forEach((rawSub) => {
       const subFormatted = formatRCHName(rawSub);
       const subSafeName = sanitizeNamedRange(subFormatted);
       if (!subFormatted) return;
@@ -206,7 +226,7 @@ function createWorkbook(type, locationData) {
 
       let vRow = 2;
       if (Array.isArray(rawVillages) && rawVillages.length > 0) {
-        rawVillages.forEach(rawV => {
+        rawVillages.forEach((rawV) => {
           const vFormatted = formatRCHName(rawV);
           if (vFormatted) {
             village.getCell(vRow++, villageCol).value = vFormatted;
@@ -218,9 +238,12 @@ function createWorkbook(type, locationData) {
       // Defined Range for Subcentre -> Village (Using Safe Range Name without '*')
       const vColLetter = getColumnLetter(villageCol);
       const vMaxRow = Math.max(vRow, 2);
-      
+
       try {
-        workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subSafeName);
+        workbook.definedNames.add(
+          `'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`,
+          subSafeName
+        );
       } catch (e) {
         console.error("Named range error:", subSafeName, e);
       }
@@ -231,9 +254,12 @@ function createWorkbook(type, locationData) {
     // Defined Range for PHC -> Subcentre (Using Safe Range Name without '*')
     const sColLetter = getColumnLetter(subCol);
     const sMaxRow = Math.max(subRow - 1, 2);
-    
+
     try {
-      workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcSafeName);
+      workbook.definedNames.add(
+        `'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`,
+        phcSafeName
+      );
     } catch (e) {
       console.error("Named range error:", phcSafeName, e);
     }
@@ -250,21 +276,21 @@ function createWorkbook(type, locationData) {
       main.getCell(`A${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
-        formulae: [phcFormula]
+        formulae: [phcFormula],
       };
 
       // Column B: SubCentre
       main.getCell(`B${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
-        formulae: [`INDIRECT(A${row})`]
+        formulae: [`INDIRECT(A${row})`],
       };
 
       // Column C: Village
       main.getCell(`C${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
-        formulae: [`INDIRECT(B${row})`]
+        formulae: [`INDIRECT(B${row})`],
       };
     }
   }
