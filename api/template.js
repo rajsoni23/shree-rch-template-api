@@ -53,11 +53,7 @@ function clean(value) {
     .trim();
 }
 
-// RCH Conversion Logic:
-// Space ' ' -> '_'
-// '(' -> '__'
-// ')' -> '__'
-// Raw String: "Baghaura (*) (105340)" -> "Baghaura___*___105340__"
+// Exact RCH Transformation Logic
 function formatRCHName(value) {
   if (value === null || value === undefined) return "";
   
@@ -122,14 +118,13 @@ function getColumnLetter(colIndex) {
 }
 
 /* =========================================================
-   4. WORKBOOK BUILDER (MATCHING mother_Registration.xlsx)
+   4. WORKBOOK BUILDER (EXACT mother_Registration.xlsx MATCH)
    ========================================================= */
 
 function createWorkbook(type, locationData) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "SHREE RCH";
 
-  // Exact sheet names matching template
   const main = workbook.addWorksheet("main");
   const subcenter = workbook.addWorksheet("subcenter");
   const village = workbook.addWorksheet("Village");
@@ -145,11 +140,12 @@ function createWorkbook(type, locationData) {
     main.getColumn(c).width = Math.max(16, headers[c - 1].length + 4);
   }
 
-  // Build Subcenter & Village Named Ranges structure
+  // Build Subcenter & Village Named Ranges
   const rawPhcs = Object.keys(locationData);
   const formattedPhcList = [];
 
   subcenter.getCell(1, 1).value = "__ALL__";
+  village.getCell(1, 1).value = "__ALL__";
   
   let subCol = 2;
   let villageCol = 2;
@@ -175,11 +171,11 @@ function createWorkbook(type, locationData) {
       subRow++;
 
       // Process Villages for this Subcentre
-      village.getCell(1, villageCol).value = subFormatted;
+      village.getCell(1, villageCol).value = subFormatted; // Range reference header
       const rawVillages = rawSubs[rawSub] || [];
 
       let vRow = 2;
-      if (Array.isArray(rawVillages)) {
+      if (Array.isArray(rawVillages) && rawVillages.length > 0) {
         rawVillages.forEach(rawV => {
           const vFormatted = formatRCHName(rawV);
           if (vFormatted) {
@@ -189,42 +185,53 @@ function createWorkbook(type, locationData) {
       }
       village.getCell(vRow, villageCol).value = "__ALL__";
 
-      // Add Named Range for Subcentre -> Villages
+      // Add Named Range for Subcentre -> Village list
+      // Matches EXACT template rule ($1 to max row)
       const vColLetter = getColumnLetter(villageCol);
       const vMaxRow = Math.max(vRow, 2);
-      workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subFormatted);
+      
+      try {
+        workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subFormatted);
+      } catch (e) {
+        console.error("Named range creation error:", subFormatted, e);
+      }
 
       villageCol++;
     });
 
-    // Add Named Range for PHC -> Subcentres
+    // Add Named Range for Health Facility -> Subcentre list
     const sColLetter = getColumnLetter(subCol);
     const sMaxRow = Math.max(subRow - 1, 2);
-    workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcFormatted);
+    
+    try {
+      workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcFormatted);
+    } catch (e) {
+      console.error("Named range creation error:", phcFormatted, e);
+    }
 
     subCol++;
   });
 
-  // Setup Dynamic Data Validation for main sheet
+  // Dynamic Data Validation
   if (formattedPhcList.length > 0) {
     const phcFormula = `"${["__ALL__", ...formattedPhcList].join(",")}"`;
 
     for (let row = 2; row <= MAX_ROWS + 1; row++) {
-      // Health Facility Dropdown (Column A)
+      // Health Facility (Column A)
       main.getCell(`A${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [phcFormula]
       };
 
-      // SubCentre Dropdown (Column B) -> INDIRECT(A2)
+      // SubCentre (Column B) -> INDIRECT(A2)
       main.getCell(`B${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
         formulae: [`INDIRECT(A${row})`]
       };
 
-      // Village Dropdown (Column C) -> INDIRECT(B2)
+      // Village (Column C) -> INDIRECT(B2)
       main.getCell(`C${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
@@ -237,7 +244,7 @@ function createWorkbook(type, locationData) {
 }
 
 /* =========================================================
-   5. REQUEST PARSER & HANDLER
+   5. REQUEST PARSER & API HANDLER
    ========================================================= */
 
 async function readBody(req) {
