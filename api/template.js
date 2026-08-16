@@ -53,89 +53,65 @@ function clean(value) {
     .trim();
 }
 
-// Helper: "Name" ya "Name (ID)" ko standard "Name__ID__" (ya bina ID
-// ke plain "Name") format me badalta hai. formatRCHName() aur uska
-// asterisk-wala branch dono isi ek jagah se ID-extraction logic lete
-// hain, taaki dono jagah same rule lage.
-function extractIdFormat(segment) {
-  // ID bracket ke andar ho to pehle usko nikaalo
-  // e.g. "BAGHAURA_(3181)" -> "BAGHAURA__3181__"
-  const parenMatch = segment.match(/^(.*?)_?\(([0-9]+)\)_*$/);
-  if (parenMatch) {
-    const mainText = parenMatch[1].replace(/_+/g, "_").replace(/_$/, "");
-    const id = parenMatch[2];
-    return `${mainText}__${id}__`;
-  }
-
-  // Normal Text__ID__ pattern (trailing digits, no brackets)
-  const idMatch = segment.match(/^(.*?)_?([0-9]+)_*$/);
-  if (idMatch) {
-    const mainText = idMatch[1].replace(/_+/g, "_").replace(/_$/, "");
-    const id = idMatch[2];
-    return `${mainText}__${id}__`;
-  }
-
-  return segment.replace(/_+/g, "_");
-}
-
-// Cell me likhne ke liye exact format (Text__ID__)
-// FIX #1: ab bracket wale IDs jaise "Name (1234)" ya "Name(1234)" ko
-// bhi sahi se "Name__1234__" me convert karta hai (pehle ye sirf
-// trailing digits handle karta tha, bracket ")" ke wajah se match
-// fail ho jaata tha aur naam bracket ke saath hi reh jaata tha).
-// FIX #3: asterisk-wala case (village names jinme khud ek duplicate
-// ID bhi hoti hai) — agar left part (jaise "KODAVARI (10011558)")
-// khud ek ID rakhta hai, to separator "*__" (1 underscore + * + 2
-// underscore) hona chahiye; agar left sirf plain naam hai (jaise
-// "Baghaura", koi ID nahi), to separator "___*___" (3+3) hona chahiye.
-// Pehle hamesha "___*___" fixed use ho raha tha aur left part se
-// bracket bhi strip nahi hota tha — isi wajah se Village dropdown me
-// gadbad pattern (jaise "KODAVARI_(10011558)___*___10011558__")
-// ban raha tha.
+// Universal RCH Formatter: Clean brackets, deduplicate IDs, handle asterisks
 function formatRCHName(value) {
   if (value === null || value === undefined) return "";
   let str = String(value).trim();
 
-  if (str === "--ALL--" || str === "__ALL__") return "__ALL__";
-
-  str = str.replace(/[\s\-]+/g, "_");
-
-  if (str.includes("*")) {
-    const parts = str.split("*");
-    const rawLeft = parts[0].replace(/_+/g, "_").replace(/_$/, "");
-    const rightId = parts[1]
-      .replace(/[()]/g, "")
-      .replace(/_+/g, "_")
-      .replace(/^_/, "")
-      .replace(/_$/, "");
-
-    const leftFormatted = extractIdFormat(rawLeft);
-
-    if (leftFormatted.endsWith("__")) {
-      // Left part khud ek ID rakhta hai
-      // e.g. "KODAVARI__10011558__" -> "KODAVARI__10011558_*__10011558__"
-      return `${leftFormatted.slice(0, -1)}*__${rightId}__`;
-    }
-
-    // Left part sirf naam hai, koi ID nahi
-    // e.g. "Baghaura" -> "Baghaura___*___105340__"
-    return `${leftFormatted}___*___${rightId}__`;
+  if (!str || str === "ALL" || str === "--ALL--" || str === "__ALL__") {
+    return "__ALL__";
   }
 
-  return extractIdFormat(str);
+  const hasAsterisk = str.includes("*");
+
+  // Extract digits and handle duplicate/concatenated IDs (e.g. 1001072910010729 or 10023790_10023790)
+  const digitMatches = str.match(/\d+/g);
+  let singleId = "";
+
+  if (digitMatches && digitMatches.length > 0) {
+    let fullDigitStr = digitMatches.join("");
+    if (fullDigitStr.length >= 10 && fullDigitStr.length % 2 === 0) {
+      let halfLen = fullDigitStr.length / 2;
+      let firstHalf = fullDigitStr.substring(0, halfLen);
+      let secondHalf = fullDigitStr.substring(halfLen);
+      if (firstHalf === secondHalf) {
+        singleId = firstHalf;
+      } else {
+        const idMatch = str.match(/\d{5,8}/);
+        singleId = idMatch ? idMatch[0] : digitMatches[0];
+      }
+    } else {
+      const idMatch = str.match(/\d{5,8}/);
+      singleId = idMatch ? idMatch[0] : digitMatches[0];
+    }
+  }
+
+  // Extract clean text (strip brackets, extra underscores, asterisks, numbers)
+  let mainText = str
+    .replace(/\([^)]*\)?/g, "")
+    .replace(/[\(\)\*\d]+/g, " ")
+    .replace(/_+/g, " ")
+    .trim()
+    .replace(/\s+/g, "_");
+
+  if (!singleId) {
+    return mainText || str;
+  }
+
+  if (!mainText) {
+    return hasAsterisk ? `___*___${singleId}__` : singleId;
+  }
+
+  return hasAsterisk ? `${mainText}___*___${singleId}__` : `${mainText}__${singleId}__`;
 }
 
-// Defined Name identifier ke liye STRICT Excel-safe Rule (No '*', No special chars)
-// FIX #2: multiple-underscore collapse (`.replace(/_+/g, "_")`) hata diya gaya hai.
-// formatRCHName() jo double-underscore pattern (__ID__) banata hai, wahi pattern
-// yahan bhi as-is rehna chahiye, warna named range ka naam aur dropdown me
-// dikhne wala text kabhi match nahi karega aur INDIRECT() fail ho jaayega.
+// Defined Name identifier for Excel XML (Strictly Alphanumeric + Underscores)
 function sanitizeNamedRange(name) {
   if (!name) return "_EMPTY_";
 
   let sanitized = String(name)
-    .replace(/[^a-zA-Z0-9_]/g, "_") // Asterisk '*' aur baki special chars -> '_' banenge
-    .replace(/^[^a-zA-Z_]/, "_$&"); // Must start with letter or underscore
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .replace(/^[^a-zA-Z_]/, "_$&");
 
   return sanitized;
 }
@@ -262,7 +238,7 @@ function createWorkbook(type, locationData) {
       }
       village.getCell(vRow, villageCol).value = "__ALL__";
 
-      // Defined Range for Subcentre -> Village (Using Safe Range Name without '*')
+      // Defined Range for Subcentre -> Village
       const vColLetter = getColumnLetter(villageCol);
       const vMaxRow = Math.max(vRow, 2);
 
@@ -278,7 +254,7 @@ function createWorkbook(type, locationData) {
       villageCol++;
     });
 
-    // Defined Range for PHC -> Subcentre (Using Safe Range Name without '*')
+    // Defined Range for PHC -> Subcentre
     const sColLetter = getColumnLetter(subCol);
     const sMaxRow = Math.max(subRow - 1, 2);
 
@@ -294,7 +270,7 @@ function createWorkbook(type, locationData) {
     subCol++;
   });
 
-  // Dynamic Data Validation Rules
+  // Dynamic Data Validation Rules with SUBSTITUTE for Asterisk Safety
   if (formattedPhcList.length > 0) {
     const phcFormula = `"${["__ALL__", ...formattedPhcList].join(",")}"`;
 
@@ -306,18 +282,18 @@ function createWorkbook(type, locationData) {
         formulae: [phcFormula],
       };
 
-      // Column B: SubCentre
+      // Column B: SubCentre (Handles '*' removal during INDIRECT lookup)
       main.getCell(`B${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
-        formulae: [`INDIRECT(A${row})`],
+        formulae: [`INDIRECT(SUBSTITUTE(A${row}, "*", "_"))`],
       };
 
-      // Column C: Village
+      // Column C: Village (Handles '*' removal during INDIRECT lookup)
       main.getCell(`C${row}`).dataValidation = {
         type: "list",
         allowBlank: true,
-        formulae: [`INDIRECT(B${row})`],
+        formulae: [`INDIRECT(SUBSTITUTE(B${row}, "*", "_"))`],
       };
     }
   }
