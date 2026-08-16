@@ -44,7 +44,7 @@ const CHILD_HEADERS = [
 ];
 
 /* =========================================================
-   BASIC HELPERS
+   1. STRING & RCH FORMATTER UTILITIES
    ========================================================= */
 
 function clean(value) {
@@ -53,16 +53,19 @@ function clean(value) {
     .trim();
 }
 
-// FIX: Spaces ko '_' aur Brackets ko '__' me convert karega
-function convertLocationFormat(value) {
-  if (value === null || value === undefined) {
-    return "";
-  }
+// RCH Conversion Logic:
+// Space ' ' -> '_'
+// '(' -> '__'
+// ')' -> '__'
+// Raw String: "Baghaura (*) (105340)" -> "Baghaura___*___105340__"
+function formatRCHName(value) {
+  if (value === null || value === undefined) return "";
+  
   return String(value)
     .trim()
+    .replace(/\s+/g, "_")
     .replace(/\(/g, "__")
-    .replace(/\)/g, "__")
-    .replace(/\s+/g, "_"); // Spaces ko underscore me convert karta hai
+    .replace(/\)/g, "__");
 }
 
 function normalizeObject(value) {
@@ -80,13 +83,11 @@ function normalizeObject(value) {
 }
 
 /* =========================================================
-   DECODE LOCATION DATA
+   2. DECODE BASE64 DATA
    ========================================================= */
 
 function decodeLocationData(baseData) {
-  if (!baseData) {
-    throw new Error("baseData is missing.");
-  }
+  if (!baseData) throw new Error("baseData is missing.");
 
   let decoded;
   try {
@@ -102,244 +103,156 @@ function decodeLocationData(baseData) {
     throw new Error("Decoded baseData is not valid JSON.");
   }
 
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error("Location data must be an object.");
-  }
-
   return normalizeObject(data);
 }
 
 /* =========================================================
-   LOCATION MODEL
+   3. EXCEL COLUMN HELPER (1 -> A, 2 -> B, 27 -> AA)
    ========================================================= */
 
-function buildLocationModel(locationData) {
-  const phcs = [];
-  const subByPhc = new Map();
-  const villagesByPair = new Map();
-
-  for (const [rawPhc, rawSubs] of Object.entries(locationData)) {
-    const phc = convertLocationFormat(rawPhc);
-    if (!phc || !rawSubs || typeof rawSubs !== "object" || Array.isArray(rawSubs)) continue;
-
-    if (!phcs.includes(phc)) phcs.push(phc);
-    if (!subByPhc.has(phc)) subByPhc.set(phc, []);
-
-    for (const [rawSub, rawVillages] of Object.entries(rawSubs)) {
-      const sub = convertLocationFormat(rawSub);
-      if (!sub) continue;
-
-      const subs = subByPhc.get(phc);
-      if (!subs.includes(sub)) subs.push(sub);
-
-      const pairKey = `${phc}|${sub}`;
-      if (!villagesByPair.has(pairKey)) villagesByPair.set(pairKey, []);
-
-      if (Array.isArray(rawVillages)) {
-        for (const rawVillage of rawVillages) {
-          const village = convertLocationFormat(rawVillage);
-          if (village && !villagesByPair.get(pairKey).includes(village)) {
-            villagesByPair.get(pairKey).push(village);
-          }
-        }
-      }
-    }
+function getColumnLetter(colIndex) {
+  let temp;
+  let letter = "";
+  while (colIndex > 0) {
+    temp = (colIndex - 1) % 26;
+    letter = String.fromCharCode(65 + temp) + letter;
+    colIndex = (colIndex - temp - 1) / 26;
   }
-
-  if (!phcs.length) throw new Error("No Health Facility/PHC data was supplied.");
-
-  return { phcs, subByPhc, villagesByPair };
+  return letter;
 }
 
 /* =========================================================
-   HELPERS & VALIDATIONS
-   ========================================================= */
-
-function addListValidation(cell, formula, errorTitle, error) {
-  cell.dataValidation = {
-    type: "list",
-    allowBlank: true,
-    showInputMessage: true,
-    showErrorMessage: true,
-    errorStyle: "stop",
-    errorTitle,
-    error,
-    formulae: [formula]
-  };
-}
-
-function styleHeader(row) {
-  row.height = 24;
-  row.eachCell(cell => {
-    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E78" } };
-    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-    cell.border = {
-      top: { style: "thin" },
-      left: { style: "thin" },
-      bottom: { style: "thin" },
-      right: { style: "thin" }
-    };
-  });
-}
-
-function configureMainSheet(ws, headers) {
-  ws.views = [{ state: "frozen", ySplit: 1 }];
-  ws.getRow(1).values = headers;
-  styleHeader(ws.getRow(1));
-
-  ws.getColumn(1).width = 28;
-  ws.getColumn(2).width = 28;
-  ws.getColumn(3).width = 32;
-
-  for (let c = 4; c <= headers.length; c++) {
-    ws.getColumn(c).width = Math.max(14, Math.min(28, headers[c - 1].length + 4));
-  }
-}
-
-/* =========================================================
-   CREATE WORKBOOK
+   4. WORKBOOK BUILDER (MATCHING mother_Registration.xlsx)
    ========================================================= */
 
 function createWorkbook(type, locationData) {
-  const model = buildLocationModel(locationData);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "SHREE RCH";
-  workbook.created = new Date();
-  workbook.modified = new Date();
 
-  const main = workbook.addWorksheet("Main");
-  const subcenter = workbook.addWorksheet("Subcenter");
+  // Exact sheet names matching template
+  const main = workbook.addWorksheet("main");
+  const subcenter = workbook.addWorksheet("subcenter");
   const village = workbook.addWorksheet("Village");
 
   const headers = type === "child" ? CHILD_HEADERS : MOTHER_HEADERS;
-  configureMainSheet(main, headers);
+  
+  // Format 'main' header row
+  main.views = [{ state: "frozen", ySplit: 1 }];
+  main.getRow(1).values = headers;
+  main.getRow(1).height = 24;
 
-  // Subcenter Headers
-  subcenter.getRow(1).values = ["PHC", "SubCentre"];
-  styleHeader(subcenter.getRow(1));
-  subcenter.getColumn(1).width = 30;
-  subcenter.getColumn(2).width = 30;
-  subcenter.getColumn(4).hidden = true;
+  for (let c = 1; c <= headers.length; c++) {
+    main.getColumn(c).width = Math.max(16, headers[c - 1].length + 4);
+  }
 
-  let subRow = 2;
-  for (const phc of model.phcs) {
-    const subs = model.subByPhc.get(phc) || [];
-    for (const sub of subs) {
-      subcenter.getCell(subRow, 1).value = phc;
-      subcenter.getCell(subRow, 2).value = sub;
+  // Build Subcenter & Village Named Ranges structure
+  const rawPhcs = Object.keys(locationData);
+  const formattedPhcList = [];
+
+  subcenter.getCell(1, 1).value = "__ALL__";
+  
+  let subCol = 2;
+  let villageCol = 2;
+
+  rawPhcs.forEach(rawPhc => {
+    const phcFormatted = formatRCHName(rawPhc);
+    if (!phcFormatted) return;
+
+    formattedPhcList.push(phcFormatted);
+    subcenter.getCell(1, subCol).value = phcFormatted;
+
+    const rawSubs = locationData[rawPhc] || {};
+    const rawSubKeys = Object.keys(rawSubs);
+
+    let subRow = 2;
+    subcenter.getCell(subRow++, subCol).value = "__ALL__";
+
+    rawSubKeys.forEach(rawSub => {
+      const subFormatted = formatRCHName(rawSub);
+      if (!subFormatted) return;
+
+      subcenter.getCell(subRow, subCol).value = subFormatted;
       subRow++;
-    }
-  }
 
-  // Populate Unique PHC List in Column D
-  const phcListStart = 2;
-  model.phcs.forEach((phc, index) => {
-    subcenter.getCell(phcListStart + index, 4).value = phc;
-  });
+      // Process Villages for this Subcentre
+      village.getCell(1, villageCol).value = subFormatted;
+      const rawVillages = rawSubs[rawSub] || [];
 
-  const lastPhcRow = phcListStart + model.phcs.length - 1;
-  workbook.definedNames.add(`'Subcenter'!$D$2:$D$${lastPhcRow}`, "PHC_LIST");
-
-  // Village Headers
-  village.getRow(1).values = ["PHC", "SubCentre", "Village", "PAIR_KEY"];
-  styleHeader(village.getRow(1));
-  village.getColumn(1).width = 30;
-  village.getColumn(2).width = 30;
-  village.getColumn(3).width = 36;
-  village.getColumn(4).hidden = true;
-
-  let villageRow = 2;
-  const pairList = [];
-
-  for (const phc of model.phcs) {
-    const subs = model.subByPhc.get(phc) || [];
-    for (const sub of subs) {
-      const pairKey = `${phc}|${sub}`;
-      const villages = model.villagesByPair.get(pairKey) || [];
-
-      if (!villages.length) continue;
-
-      for (const villageName of villages) {
-        village.getCell(villageRow, 1).value = phc;
-        village.getCell(villageRow, 2).value = sub;
-        village.getCell(villageRow, 3).value = villageName;
-        village.getCell(villageRow, 4).value = pairKey;
-        villageRow++;
+      let vRow = 2;
+      if (Array.isArray(rawVillages)) {
+        rawVillages.forEach(rawV => {
+          const vFormatted = formatRCHName(rawV);
+          if (vFormatted) {
+            village.getCell(vRow++, villageCol).value = vFormatted;
+          }
+        });
       }
-      pairList.push(pairKey);
-    }
-  }
+      village.getCell(vRow, villageCol).value = "__ALL__";
 
-  // Unique Pair Keys List in Column E
-  village.getColumn(5).hidden = true;
-  pairList.forEach((pair, index) => {
-    village.getCell(index + 2, 5).value = pair;
+      // Add Named Range for Subcentre -> Villages
+      const vColLetter = getColumnLetter(villageCol);
+      const vMaxRow = Math.max(vRow, 2);
+      workbook.definedNames.add(`'Village'!$${vColLetter}$1:$${vColLetter}$${vMaxRow}`, subFormatted);
+
+      villageCol++;
+    });
+
+    // Add Named Range for PHC -> Subcentres
+    const sColLetter = getColumnLetter(subCol);
+    const sMaxRow = Math.max(subRow - 1, 2);
+    workbook.definedNames.add(`'subcenter'!$${sColLetter}$2:$${sColLetter}$${sMaxRow}`, phcFormatted);
+
+    subCol++;
   });
 
-  if (pairList.length) {
-    workbook.definedNames.add(`'Village'!$E$2:$E$${pairList.length + 1}`, "PAIR_KEYS");
-  }
+  // Setup Dynamic Data Validation for main sheet
+  if (formattedPhcList.length > 0) {
+    const phcFormula = `"${["__ALL__", ...formattedPhcList].join(",")}"`;
 
-  const maxSubRow = Math.max(2, subRow - 1);
-  const maxVillageRow = Math.max(2, villageRow - 1);
+    for (let row = 2; row <= MAX_ROWS + 1; row++) {
+      // Health Facility Dropdown (Column A)
+      main.getCell(`A${row}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: [phcFormula]
+      };
 
-  /* Data Validation Setup for Rows */
-  for (let row = 2; row <= MAX_ROWS + 1; row++) {
-    // Health Facility (PHC)
-    addListValidation(
-      main.getCell(row, 1),
-      "=PHC_LIST",
-      "Invalid Health Facility",
-      "Select a Health Facility from the dropdown."
-    );
+      // SubCentre Dropdown (Column B) -> INDIRECT(A2)
+      main.getCell(`B${row}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: [`INDIRECT(A${row})`]
+      };
 
-    // SubCentre Formula
-    const subCenterFormula = `=OFFSET(Subcenter!$B$1,MATCH(A${row},Subcenter!$A$2:$A$${maxSubRow},0),0,COUNTIF(Subcenter!$A$2:$A$${maxSubRow},A${row}),1)`;
-
-    addListValidation(
-      main.getCell(row, 2),
-      subCenterFormula,
-      "Invalid SubCentre",
-      "Select a SubCentre belonging to the selected Health Facility."
-    );
-
-    // Village Formula
-    const villageFormula = `=OFFSET(Village!$C$1,MATCH(A${row}&"|"&B${row},Village!$D$2:$D$${maxVillageRow},0),0,COUNTIF(Village!$D$2:$D$${maxVillageRow},A${row}&"|"&B${row}),1)`;
-
-    addListValidation(
-      main.getCell(row, 3),
-      villageFormula,
-      "Invalid Village",
-      "Select a Village belonging to the selected Health Facility and SubCentre."
-    );
+      // Village Dropdown (Column C) -> INDIRECT(B2)
+      main.getCell(`C${row}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: [`INDIRECT(B${row})`]
+      };
+    }
   }
 
   return workbook;
 }
 
 /* =========================================================
-   READ REQUEST BODY & HANDLER
+   5. REQUEST PARSER & HANDLER
    ========================================================= */
 
 async function readBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
 
   const chunks = [];
-  for await (const chunk of req) {
-    chunks.push(chunk);
-  }
+  for await (const chunk of req) chunks.push(chunk);
 
   const raw = Buffer.concat(chunks).toString("utf8");
   if (!raw) return {};
 
-  const contentType = String(req.headers["content-type"] || "");
-  if (contentType.includes("application/json")) {
+  if (String(req.headers["content-type"] || "").includes("application/json")) {
     return JSON.parse(raw);
   }
-
-  const params = new URLSearchParams(raw);
-  return Object.fromEntries(params.entries());
+  return Object.fromEntries(new URLSearchParams(raw).entries());
 }
 
 module.exports = async function handler(req, res) {
@@ -348,25 +261,8 @@ module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Cache-Control", "no-store");
 
-  if (req.method === "OPTIONS") {
-    res.status(204).end();
-    return;
-  }
-
-  if (req.method === "GET") {
-    res.status(200).json({
-      ok: true,
-      service: "SHREE RCH Template API",
-      endpoint: "/api/template",
-      methods: ["POST"],
-    });
-    return;
-  }
-
-  if (req.method !== "POST") {
-    res.status(405).json({ ok: false, error: "Method not allowed. Use POST." });
-    return;
-  }
+  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "POST") return res.status(405).json({ ok: false, error: "Use POST method." });
 
   try {
     const body = await readBody(req);
@@ -387,10 +283,7 @@ module.exports = async function handler(req, res) {
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(Buffer.from(buffer));
   } catch (error) {
-    console.error("SHREE RCH Template API:", error);
-    res.status(400).json({
-      ok: false,
-      error: error.message || "Template generation failed.",
-    });
+    console.error("RCH API Error:", error);
+    res.status(400).json({ ok: false, error: error.message });
   }
 };
