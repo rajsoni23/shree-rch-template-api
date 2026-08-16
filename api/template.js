@@ -44,13 +44,31 @@ const CHILD_HEADERS = [
 ];
 
 /* =========================================================
-   1. RCH PARSER & FORMATTERS
+   1. RCH PARSER & FORMATTERS (FORCED ON ALL ITEMS)
    ========================================================= */
 
 function clean(value) {
   return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function extractVillageText(v) {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string" || typeof v === "number") return String(v).trim();
+
+  if (typeof v === "object") {
+    if (v.text) return extractVillageText(v.text);
+    if (v.name) return extractVillageText(v.name);
+    if (v.label) return extractVillageText(v.label);
+    if (v.villageName) return extractVillageText(v.villageName);
+    if (v.village) return extractVillageText(v.village);
+    if (v.value) return extractVillageText(v.value);
+
+    const values = Object.values(v);
+    if (values.length > 0) return extractVillageText(values[0]);
+  }
+  return String(v).trim();
 }
 
 function extractIdFormat(segment) {
@@ -81,8 +99,9 @@ function extractIdFormat(segment) {
 
 function formatRCHName(value) {
   if (value === null || value === undefined) return "";
-  let str = String(value).trim();
+  let str = extractVillageText(value);
 
+  if (!str) return "";
   if (str === "ALL" || str === "--ALL--" || str === "__ALL__") return "__ALL__";
 
   str = str.replace(/[\s\-]+/g, "_");
@@ -111,9 +130,16 @@ function formatRCHName(value) {
 function sanitizeNamedRange(name) {
   if (!name) return "_EMPTY_";
 
-  return String(name)
+  let cleanStr = String(name)
+    .replace(/\*/g, "_")
     .replace(/[^a-zA-Z0-9_]/g, "_")
-    .replace(/^[^a-zA-Z_]/, "_$&");
+    .replace(/_+/g, "_");
+
+  if (/^[^a-zA-Z_]/.test(cleanStr)) {
+    cleanStr = "_" + cleanStr;
+  }
+
+  return cleanStr.substring(0, 240);
 }
 
 function normalizeObject(value) {
@@ -160,7 +186,7 @@ function getColumnLetter(colIndex) {
   while (colIndex > 0) {
     temp = (colIndex - 1) % 26;
     letter = String.fromCharCode(65 + temp) + letter;
-    colIndex = (colIndex - temp - 1) / 26;
+    colIndex = Math.floor((colIndex - temp - 1) / 26);
   }
   return letter;
 }
@@ -188,8 +214,7 @@ function createWorkbook(type, locationData) {
   }
 
   const rawPhcs = Object.keys(locationData);
-  
-  // FIX #1: PHC Master List in subcenter Column A to prevent 255-char cutoff limit
+
   subcenter.getCell(1, 1).value = "__ALL__";
   let phcMasterRow = 2;
 
@@ -201,10 +226,7 @@ function createWorkbook(type, locationData) {
     const phcSafeName = sanitizeNamedRange(phcFormatted);
     if (!phcFormatted) return;
 
-    // Add PHC to Column A Master List
     subcenter.getCell(phcMasterRow++, 1).value = phcFormatted;
-
-    // Header for Subcentre columns
     subcenter.getCell(1, subCol).value = phcFormatted;
 
     const rawSubs = locationData[rawPhc] || {};
@@ -219,26 +241,31 @@ function createWorkbook(type, locationData) {
       if (!subFormatted) return;
 
       subcenter.getCell(subRow++, subCol).value = subFormatted;
-
-      // Header for Village columns
       village.getCell(1, villageCol).value = subFormatted;
-      
-      // FIX #2: Handle both Array and Object formats for Village list
+
       const rawVillages = rawSubs[rawSub] || [];
       let villageList = [];
+
       if (Array.isArray(rawVillages)) {
         villageList = rawVillages;
       } else if (rawVillages && typeof rawVillages === "object") {
-        villageList = Object.entries(rawVillages).map(([k, v]) => 
-          (typeof v === "string" && v.trim() ? v : k)
-        );
+        for (const [k, v] of Object.entries(rawVillages)) {
+          const valStr = extractVillageText(v);
+          const keyStr = extractVillageText(k);
+          if (valStr && valStr !== "[object Object]") {
+            villageList.push(valStr);
+          } else if (keyStr) {
+            villageList.push(keyStr);
+          }
+        }
       }
 
       let vRow = 2;
-      village.getCell(vRow++, villageCol).value = "__ALL__"; // "__ALL__" placed at top
+      village.getCell(vRow++, villageCol).value = "__ALL__";
 
       if (villageList.length > 0) {
         villageList.forEach((rawV) => {
+          // ALWAYS format through formatRCHName
           const vFormatted = formatRCHName(rawV);
           if (vFormatted && vFormatted !== "__ALL__") {
             village.getCell(vRow++, villageCol).value = vFormatted;
@@ -246,7 +273,6 @@ function createWorkbook(type, locationData) {
         });
       }
 
-      // FIX #3: Defined Range starts at Row 2 (skips header)
       const vColLetter = getColumnLetter(villageCol);
       const vMaxRow = Math.max(vRow - 1, 2);
 
@@ -277,7 +303,6 @@ function createWorkbook(type, locationData) {
     subCol++;
   });
 
-  // PHC List Named Range for Column A Master List
   const phcMaxRow = Math.max(phcMasterRow - 1, 1);
   try {
     workbook.definedNames.add(
@@ -290,21 +315,18 @@ function createWorkbook(type, locationData) {
 
   // Dynamic Data Validation Rules
   for (let row = 2; row <= MAX_ROWS + 1; row++) {
-    // Health Facility (Uses Range instead of Inline String)
     main.getCell(`A${row}`).dataValidation = {
       type: "list",
       allowBlank: true,
       formulae: ["PHC_LIST"],
     };
 
-    // SubCentre (Dependent Dropdown)
     main.getCell(`B${row}`).dataValidation = {
       type: "list",
       allowBlank: true,
       formulae: [`INDIRECT(SUBSTITUTE(A${row}, "*", "_"))`],
     };
 
-    // Village (Dependent Dropdown)
     main.getCell(`C${row}`).dataValidation = {
       type: "list",
       allowBlank: true,
