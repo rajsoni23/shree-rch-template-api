@@ -43,30 +43,21 @@ const CHILD_HEADERS = [
   "HBIGDate",
 ];
 
-
 /* =========================================================
    BASIC HELPERS
    ========================================================= */
 
 function clean(value) {
-
   return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
-
 }
 
 
 /*
- * Converts:
- *
  * BAGHAURA (3181)
- *
- * into:
- *
+ *       ↓
  * BAGHAURA__3181__
- *
- * Existing __ format is preserved.
  */
 function convertLocationFormat(value) {
 
@@ -77,43 +68,22 @@ function convertLocationFormat(value) {
     return "";
   }
 
-  let text =
-    String(value).trim();
-
-
-  text =
-    text.replace(
-      /\(/g,
-      "__"
-    );
-
-
-  text =
-    text.replace(
-      /\)/g,
-      "__"
-    );
-
-
-  return text;
-
+  return String(value)
+    .trim()
+    .replace(/\(/g, "__")
+    .replace(/\)/g, "__");
 }
 
 
 /* =========================================================
-   NORMALIZE LOCATION OBJECT
+   NORMALIZE OBJECT
    ========================================================= */
 
 function normalizeObject(value) {
 
   if (Array.isArray(value)) {
-
-    return value.map(
-      normalizeObject
-    );
-
+    return value.map(normalizeObject);
   }
-
 
   if (
     value &&
@@ -122,27 +92,20 @@ function normalizeObject(value) {
 
     const out = {};
 
-
     for (
       const [key, val]
       of Object.entries(value)
     ) {
 
-      out[
-        clean(key)
-      ] =
+      out[clean(key)] =
         normalizeObject(val);
 
     }
 
-
     return out;
-
   }
 
-
   return value;
-
 }
 
 
@@ -166,30 +129,20 @@ function safeName(
         "_"
       );
 
-
   if (!name) {
-
-    name =
-      fallback;
-
+    name = fallback;
   }
-
 
   if (
     /^[0-9]/.test(name)
   ) {
-
-    name =
-      "_" + name;
-
+    name = "_" + name;
   }
-
 
   return name.slice(
     0,
     200
   );
-
 }
 
 
@@ -199,59 +152,21 @@ function safeName(
 
 function parseRequest(req) {
 
-  let type =
+  const type =
     req.body?.typData;
 
-  let baseData =
+  const baseData =
     req.body?.baseData;
 
-
-  if (
-    typeof type === "string" &&
-    typeof baseData === "string"
-  ) {
-
-    return {
-
-      type,
-      baseData
-
-    };
-
-  }
-
-
-  if (
-    typeof req.body === "object" &&
-    req.body !== null
-  ) {
-
-    return {
-
-      type:
-        req.body.typData,
-
-      baseData:
-        req.body.baseData
-
-    };
-
-  }
-
-
   return {
-
     type,
-
     baseData
-
   };
-
 }
 
 
 /* =========================================================
-   BASE64 LOCATION DATA
+   DECODE LOCATION DATA
    ========================================================= */
 
 function decodeLocationData(
@@ -266,9 +181,7 @@ function decodeLocationData(
 
   }
 
-
   let decoded;
-
 
   try {
 
@@ -278,9 +191,7 @@ function decodeLocationData(
           String(baseData),
           "base64"
         )
-        .toString(
-          "utf8"
-        );
+        .toString("utf8");
 
   }
   catch {
@@ -291,9 +202,7 @@ function decodeLocationData(
 
   }
 
-
   let data;
-
 
   try {
 
@@ -311,7 +220,6 @@ function decodeLocationData(
 
   }
 
-
   if (
     !data ||
     typeof data !== "object" ||
@@ -324,16 +232,14 @@ function decodeLocationData(
 
   }
 
-
   return normalizeObject(
     data
   );
-
 }
 
 
 /* =========================================================
-   BUILD LOCATION MODEL
+   LOCATION MODEL
    ========================================================= */
 
 function buildLocationModel(
@@ -347,7 +253,6 @@ function buildLocationModel(
 
   const villagesByPair =
     new Map();
-
 
   for (
     const [
@@ -364,7 +269,6 @@ function buildLocationModel(
         rawPhc
       );
 
-
     if (
       !phc ||
       !rawSubs ||
@@ -376,24 +280,16 @@ function buildLocationModel(
 
     }
 
-
     if (
-      !phcs.includes(
-        phc
-      )
+      !phcs.includes(phc)
     ) {
 
-      phcs.push(
-        phc
-      );
+      phcs.push(phc);
 
     }
 
-
     if (
-      !subByPhc.has(
-        phc
-      )
+      !subByPhc.has(phc)
     ) {
 
       subByPhc.set(
@@ -402,7 +298,6 @@ function buildLocationModel(
       );
 
     }
-
 
     for (
       const [
@@ -419,41 +314,23 @@ function buildLocationModel(
           rawSub
         );
 
-
       if (!sub) {
-
         continue;
-
       }
-
 
       const subs =
-        subByPhc.get(
-          phc
-        );
-
+        subByPhc.get(phc);
 
       if (
-        !subs.includes(
-          sub
-        )
+        !subs.includes(sub)
       ) {
 
-        subs.push(
-          sub
-        );
+        subs.push(sub);
 
       }
 
-
-      /*
-       * UNIQUE KEY
-       *
-       * PHC + SUBCENTRE
-       */
       const pairKey =
         `${phc}|${sub}`;
-
 
       if (
         !villagesByPair.has(
@@ -467,7 +344,6 @@ function buildLocationModel(
         );
 
       }
-
 
       if (
         Array.isArray(
@@ -485,14 +361,11 @@ function buildLocationModel(
               rawVillage
             );
 
-
           if (
             village &&
             !villagesByPair
               .get(pairKey)
-              .includes(
-                village
-              )
+              .includes(village)
           ) {
 
             villagesByPair
@@ -511,7 +384,6 @@ function buildLocationModel(
 
   }
 
-
   if (
     !phcs.length
   ) {
@@ -522,13 +394,11 @@ function buildLocationModel(
 
   }
 
-
   if (
     ![
       ...villagesByPair.values()
     ].some(
-      list =>
-        list.length > 0
+      list => list.length > 0
     )
   ) {
 
@@ -538,39 +408,49 @@ function buildLocationModel(
 
   }
 
-
   return {
-
     phcs,
-
     subByPhc,
-
     villagesByPair
-
   };
+}
 
+
+/* =========================================================
+   EXCEL COLUMN LETTER
+   ========================================================= */
+
+function columnLetter(
+  column
+) {
+
+  let result = "";
+
+  while (
+    column > 0
+  ) {
+
+    const remainder =
+      (column - 1) % 26;
+
+    result =
+      String.fromCharCode(
+        65 + remainder
+      ) + result;
+
+    column =
+      Math.floor(
+        (column - 1) / 26
+      );
+
+  }
+
+  return result;
 }
 
 
 /* =========================================================
    NAMED RANGE
-   =========================================================
-
-   IMPORTANT:
-
-   ExcelJS syntax:
-
-   definedNames.add(
-       range,
-       name
-   );
-
-   NOT:
-
-   definedNames.add(
-       name,
-       range
-   );
    ========================================================= */
 
 function addNamedRange(
@@ -580,12 +460,16 @@ function addNamedRange(
   range
 ) {
 
+  /*
+   * ExcelJS:
+   *
+   * first = range
+   * second = name
+   */
+
   workbook.definedNames.add(
-
     `'${sheetName}'!${range}`,
-
     name
-
   );
 
 }
@@ -604,20 +488,15 @@ function addListValidation(
 
   cell.dataValidation = {
 
-    type:
-      "list",
+    type: "list",
 
-    allowBlank:
-      true,
+    allowBlank: true,
 
-    showInputMessage:
-      true,
+    showInputMessage: true,
 
-    showErrorMessage:
-      true,
+    showErrorMessage: true,
 
-    errorStyle:
-      "stop",
+    errorStyle: "stop",
 
     errorTitle,
 
@@ -640,19 +519,14 @@ function styleHeader(
   row
 ) {
 
-  row.height =
-    24;
-
+  row.height = 24;
 
   row.eachCell(
-    (
-      cell
-    ) => {
+    cell => {
 
       cell.font = {
 
-        bold:
-          true,
+        bold: true,
 
         color: {
           argb:
@@ -661,14 +535,11 @@ function styleHeader(
 
       };
 
-
       cell.fill = {
 
-        type:
-          "pattern",
+        type: "pattern",
 
-        pattern:
-          "solid",
+        pattern: "solid",
 
         fgColor: {
           argb:
@@ -676,7 +547,6 @@ function styleHeader(
         }
 
       };
-
 
       cell.alignment = {
 
@@ -691,55 +561,22 @@ function styleHeader(
 
       };
 
-
       cell.border = {
 
         top: {
-
-          style:
-            "thin",
-
-          color: {
-            argb:
-              "FFD9E2F3"
-          }
-
+          style: "thin"
         },
 
         left: {
-
-          style:
-            "thin",
-
-          color: {
-            argb:
-              "FFD9E2F3"
-          }
-
+          style: "thin"
         },
 
         bottom: {
-
-          style:
-            "thin",
-
-          color: {
-            argb:
-              "FFD9E2F3"
-          }
-
+          style: "thin"
         },
 
         right: {
-
-          style:
-            "thin",
-
-          color: {
-            argb:
-              "FFD9E2F3"
-          }
-
+          style: "thin"
         }
 
       };
@@ -760,110 +597,44 @@ function configureMainSheet(
 ) {
 
   ws.views = [
-
     {
-
-      state:
-        "frozen",
-
-      ySplit:
-        1
-
+      state: "frozen",
+      ySplit: 1
     }
-
   ];
-
 
   ws.getRow(
     1
   ).values =
     headers;
 
-
   styleHeader(
-    ws.getRow(
-      1
-    )
+    ws.getRow(1)
   );
 
-
-  ws.getColumn(
-    1
-  ).width =
+  ws.getColumn(1).width =
     28;
 
-
-  ws.getColumn(
-    2
-  ).width =
+  ws.getColumn(2).width =
     28;
 
-
-  ws.getColumn(
-    3
-  ).width =
+  ws.getColumn(3).width =
     32;
 
-
   for (
-    let column = 4;
-    column <= headers.length;
-    column++
+    let c = 4;
+    c <= headers.length;
+    c++
   ) {
 
-    ws.getColumn(
-      column
-    ).width =
-
+    ws.getColumn(c).width =
       Math.max(
-
         14,
-
         Math.min(
-
           28,
-
-          headers[
-            column - 1
-          ].length + 4
-
+          headers[c - 1].length + 4
         )
-
       );
-
-  }
-
-
-  /*
-   * Clear existing validation
-   * before adding our own.
-   */
-
-  for (
-    let row = 2;
-    row <= MAX_ROWS + 1;
-    row++
-  ) {
-
-    ws.getCell(
-      row,
-      1
-    ).dataValidation =
-      undefined;
-
-
-    ws.getCell(
-      row,
-      2
-    ).dataValidation =
-      undefined;
-
-
-    ws.getCell(
-      row,
-      3
-    ).dataValidation =
-      undefined;
 
   }
 
@@ -884,28 +655,22 @@ function createWorkbook(
       locationData
     );
 
-
   const workbook =
     new ExcelJS.Workbook();
-
 
   workbook.creator =
     "SHREE RCH";
 
-
   workbook.created =
     new Date();
-
 
   workbook.modified =
     new Date();
 
 
-  /*
-   =========================================================
-   MAIN
-   =========================================================
-   */
+  /* =======================================================
+     MAIN
+     ======================================================= */
 
   const main =
     workbook.addWorksheet(
@@ -913,11 +678,9 @@ function createWorkbook(
     );
 
 
-  /*
-   =========================================================
-   SUBCENTER
-   =========================================================
-   */
+  /* =======================================================
+     SUBCENTER
+     ======================================================= */
 
   const subcenter =
     workbook.addWorksheet(
@@ -925,11 +688,9 @@ function createWorkbook(
     );
 
 
-  /*
-   =========================================================
-   VILLAGE
-   =========================================================
-   */
+  /* =======================================================
+     VILLAGE
+     ======================================================= */
 
   const village =
     workbook.addWorksheet(
@@ -939,9 +700,7 @@ function createWorkbook(
 
   const headers =
     type === "child"
-
       ? CHILD_HEADERS
-
       : MOTHER_HEADERS;
 
 
@@ -952,63 +711,41 @@ function createWorkbook(
 
 
   /* =======================================================
-     SUBCENTER MASTER
+     SUBCENTER DATA
      ======================================================= */
 
   subcenter.getRow(
     1
   ).values = [
-
     "PHC",
-
     "SubCentre"
-
   ];
 
-
   styleHeader(
-    subcenter.getRow(
-      1
-    )
+    subcenter.getRow(1)
   );
 
-
-  subcenter.getColumn(
-    1
-  ).width =
+  subcenter.getColumn(1).width =
     30;
 
-
-  subcenter.getColumn(
-    2
-  ).width =
+  subcenter.getColumn(2).width =
     30;
 
-
-  subcenter.getColumn(
-    4
-  ).width =
+  subcenter.getColumn(4).width =
     2;
 
-
-  subcenter.getColumn(
-    4
-  ).hidden =
+  subcenter.getColumn(4).hidden =
     true;
 
 
-  let subRow =
-    2;
-
-
-  const phcRangeRows =
-    [];
-
-
   /*
-   * Put each PHC's
-   * SubCentres together.
+   * PHC → row range
    */
+
+  let subRow = 2;
+
+  const phcRangeRows = [];
+
 
   for (
     const phc
@@ -1017,7 +754,6 @@ function createWorkbook(
 
     const start =
       subRow;
-
 
     const subs =
       model.subByPhc.get(
@@ -1036,13 +772,11 @@ function createWorkbook(
       ).value =
         phc;
 
-
       subcenter.getCell(
         subRow,
         2
       ).value =
         sub;
-
 
       subRow++;
 
@@ -1078,7 +812,6 @@ function createWorkbook(
 
 
   model.phcs.forEach(
-
     (
       phc,
       index
@@ -1091,7 +824,6 @@ function createWorkbook(
         phc;
 
     }
-
   );
 
 
@@ -1113,13 +845,10 @@ function createWorkbook(
 
 
   /*
-   * SC_1
-   * SC_2
-   * SC_3...
+   * SC_1, SC_2...
    */
 
   phcRangeRows.forEach(
-
     (
       item,
       index
@@ -1138,84 +867,48 @@ function createWorkbook(
       );
 
     }
-
   );
 
 
   /* =======================================================
-     VILLAGE MASTER
+     VILLAGE DATA
      ======================================================= */
 
   village.getRow(
     1
   ).values = [
-
     "PHC",
-
     "SubCentre",
-
     "Village",
-
     "PAIR_KEY"
-
   ];
 
-
   styleHeader(
-    village.getRow(
-      1
-    )
+    village.getRow(1)
   );
 
-
-  village.getColumn(
-    1
-  ).width =
+  village.getColumn(1).width =
     30;
 
-
-  village.getColumn(
-    2
-  ).width =
+  village.getColumn(2).width =
     30;
 
-
-  village.getColumn(
-    3
-  ).width =
+  village.getColumn(3).width =
     36;
 
-
-  village.getColumn(
-    4
-  ).width =
+  village.getColumn(4).width =
     2;
 
-
-  village.getColumn(
-    4
-  ).hidden =
+  village.getColumn(4).hidden =
     true;
 
 
-  let villageRow =
-    2;
+  let villageRow = 2;
 
+  const pairRows = [];
 
-  const pairRows =
-    [];
+  const pairList = [];
 
-
-  const pairList =
-    [];
-
-
-  /*
-   * IMPORTANT:
-   *
-   * Every PHC + SubCentre
-   * gets its own village range.
-   */
 
   for (
     const phc
@@ -1236,12 +929,9 @@ function createWorkbook(
       const pairKey =
         `${phc}|${sub}`;
 
-
       const villages =
         model.villagesByPair
-          .get(
-            pairKey
-          ) || [];
+          .get(pairKey) || [];
 
 
       if (
@@ -1268,13 +958,11 @@ function createWorkbook(
         ).value =
           phc;
 
-
         village.getCell(
           villageRow,
           2
         ).value =
           sub;
-
 
         village.getCell(
           villageRow,
@@ -1282,13 +970,11 @@ function createWorkbook(
         ).value =
           villageName;
 
-
         village.getCell(
           villageRow,
           4
         ).value =
           pairKey;
-
 
         villageRow++;
 
@@ -1317,11 +1003,17 @@ function createWorkbook(
 
 
   /*
-   * Hidden PAIR_KEYS
+   * Hidden pair list
    */
 
-  pairList.forEach(
+  village.getColumn(5).width =
+    2;
 
+  village.getColumn(5).hidden =
+    true;
+
+
+  pairList.forEach(
     (
       pair,
       index
@@ -1334,24 +1026,11 @@ function createWorkbook(
         pair;
 
     }
-
   );
 
 
-  village.getColumn(
-    5
-  ).width =
-    2;
-
-
-  village.getColumn(
-    5
-  ).hidden =
-    true;
-
-
   /*
-   * PAIR_KEYS named range
+   * PAIR_KEYS
    */
 
   if (
@@ -1374,16 +1053,10 @@ function createWorkbook(
 
 
   /*
-   * V_1
-   * V_2
-   * V_3...
-   *
-   * Every range belongs to
-   * ONE PHC + ONE SubCentre.
+   * V_1, V_2...
    */
 
   pairRows.forEach(
-
     (
       item,
       index
@@ -1402,7 +1075,6 @@ function createWorkbook(
       );
 
     }
-
   );
 
 
@@ -1417,11 +1089,9 @@ function createWorkbook(
   ) {
 
 
-    /*
-     * =====================================================
-     * A = HEALTH FACILITY
-     * =====================================================
-     */
+    /* =====================================================
+       A = HEALTH FACILITY
+       ===================================================== */
 
     addListValidation(
 
@@ -1439,22 +1109,57 @@ function createWorkbook(
     );
 
 
-    /*
-     * =====================================================
-     * B = SUBCENTRE
-     * =====================================================
-     *
-     * A2 selected:
-     *
-     * BAGHAURA__3181__
-     *
-     * MATCH finds its position in PHC_LIST.
-     *
-     * SC_1 / SC_2 / SC_3...
-     * gives only that PHC's
-     * SubCentres.
-     * =====================================================
-     */
+    /* =====================================================
+       B = SUBCENTRE
+       =====================================================
+
+       IMPORTANT:
+
+       We use OFFSET + MATCH.
+
+       This avoids:
+       INDIRECT("SC_"&MATCH(...))
+
+       which was the unreliable part.
+       ===================================================== */
+
+    const subCenterFormula =
+
+      `=IFERROR(` +
+
+      `OFFSET(` +
+
+      `Subcenter!$B$1,` +
+
+      `MATCH(` +
+
+      `A${row},` +
+
+      `Subcenter!$D$2:$D$${model.phcs.length + 1},` +
+
+      `0` +
+
+      `),` +
+
+      `0,` +
+
+      `COUNTIF(` +
+
+      `Subcenter!$A$2:$A$${Math.max(
+        2,
+        subRow - 1
+      )},` +
+
+      `A${row}` +
+
+      `),` +
+
+      `1` +
+
+      `)` +
+
+      `,"")`;
+
 
     addListValidation(
 
@@ -1463,7 +1168,7 @@ function createWorkbook(
         2
       ),
 
-      `=IFERROR(INDIRECT("SC_"&MATCH(A${row},PHC_LIST,0)),"")`,
+      subCenterFormula,
 
       "Invalid SubCentre",
 
@@ -1472,24 +1177,56 @@ function createWorkbook(
     );
 
 
-    /*
-     * =====================================================
-     * C = VILLAGE
-     * =====================================================
-     *
-     * A2 = PHC
-     * B2 = SubCentre
-     *
-     * pair:
-     *
-     * PHC|SubCentre
-     *
-     * MATCH finds exactly that pair.
-     *
-     * V_1 / V_2 / V_3...
-     * contains ONLY that SubCentre's villages.
-     * =====================================================
-     */
+    /* =====================================================
+       C = VILLAGE
+       =====================================================
+
+       A = PHC
+       B = SubCentre
+
+       We find:
+       PHC|SubCentre
+
+       Then use that pair's village range.
+       ===================================================== */
+
+    const villageFormula =
+
+      `=IFERROR(` +
+
+      `OFFSET(` +
+
+      `Village!$C$1,` +
+
+      `MATCH(` +
+
+      `A${row}&"|"&B${row},` +
+
+      `Village!$E$2:$E$${pairList.length + 1},` +
+
+      `0` +
+
+      `),` +
+
+      `0,` +
+
+      `COUNTIF(` +
+
+      `Village!$D$2:$D$${Math.max(
+        2,
+        villageRow - 1
+      )},` +
+
+      `A${row}&"|"&B${row}` +
+
+      `),` +
+
+      `1` +
+
+      `)` +
+
+      `,"")`;
+
 
     addListValidation(
 
@@ -1498,7 +1235,7 @@ function createWorkbook(
         3
       ),
 
-      `=IFERROR(INDIRECT("V_"&MATCH(A${row}&"|"&B${row},PAIR_KEYS,0)),"")`,
+      villageFormula,
 
       "Invalid Village",
 
@@ -1509,17 +1246,15 @@ function createWorkbook(
   }
 
 
-  /*
-   * No filters.
-   */
+  /* =======================================================
+     FINISH
+     ======================================================= */
 
   main.autoFilter =
     undefined;
 
-
   subcenter.autoFilter =
     undefined;
-
 
   village.autoFilter =
     undefined;
@@ -1538,10 +1273,6 @@ async function readBody(
   req
 ) {
 
-  /*
-   * Vercel may already parse JSON.
-   */
-
   if (
     req.body &&
     typeof req.body === "object"
@@ -1552,8 +1283,7 @@ async function readBody(
   }
 
 
-  const chunks =
-    [];
+  const chunks = [];
 
 
   for await (
@@ -1570,12 +1300,8 @@ async function readBody(
 
   const raw =
     Buffer
-      .concat(
-        chunks
-      )
-      .toString(
-        "utf8"
-      );
+      .concat(chunks)
+      .toString("utf8");
 
 
   if (!raw) {
@@ -1593,10 +1319,6 @@ async function readBody(
     );
 
 
-  /*
-   * JSON
-   */
-
   if (
     contentType.includes(
       "application/json"
@@ -1609,10 +1331,6 @@ async function readBody(
 
   }
 
-
-  /*
-   * Form URL Encoded
-   */
 
   const params =
     new URLSearchParams(
@@ -1637,28 +1355,20 @@ module.exports =
     res
   ) {
 
-
-    /*
-     * CORS
-     */
-
     res.setHeader(
       "Access-Control-Allow-Origin",
       ALLOW_ORIGIN
     );
-
 
     res.setHeader(
       "Access-Control-Allow-Methods",
       "POST, OPTIONS"
     );
 
-
     res.setHeader(
       "Access-Control-Allow-Headers",
       "Content-Type"
     );
-
 
     res.setHeader(
       "Cache-Control",
@@ -1666,13 +1376,12 @@ module.exports =
     );
 
 
-    /*
-     * OPTIONS
-     */
+    /* =====================================================
+       OPTIONS
+       ===================================================== */
 
     if (
-      req.method ===
-      "OPTIONS"
+      req.method === "OPTIONS"
     ) {
 
       res
@@ -1684,23 +1393,19 @@ module.exports =
     }
 
 
-    /*
-     * GET
-     *
-     * API health check
-     */
+    /* =====================================================
+       GET
+       ===================================================== */
 
     if (
-      req.method ===
-      "GET"
+      req.method === "GET"
     ) {
 
       res
         .status(200)
         .json({
 
-          ok:
-            true,
+          ok: true,
 
           service:
             "SHREE RCH Template API",
@@ -1719,21 +1424,19 @@ module.exports =
     }
 
 
-    /*
-     * Only POST
-     */
+    /* =====================================================
+       POST ONLY
+       ===================================================== */
 
     if (
-      req.method !==
-      "POST"
+      req.method !== "POST"
     ) {
 
       res
         .status(405)
         .json({
 
-          ok:
-            false,
+          ok: false,
 
           error:
             "Method not allowed. Use POST."
@@ -1747,10 +1450,9 @@ module.exports =
 
     try {
 
-
-      /*
-       * Read request
-       */
+      /* ===================================================
+         BODY
+         =================================================== */
 
       const body =
         await readBody(
@@ -1758,9 +1460,9 @@ module.exports =
         );
 
 
-      /*
-       * Mother / Child
-       */
+      /* ===================================================
+         TYPE
+         =================================================== */
 
       const type =
         clean(
@@ -1781,9 +1483,9 @@ module.exports =
       }
 
 
-      /*
-       * Decode location data
-       */
+      /* ===================================================
+         LOCATION DATA
+         =================================================== */
 
       const locationData =
         decodeLocationData(
@@ -1791,9 +1493,9 @@ module.exports =
         );
 
 
-      /*
-       * Generate workbook
-       */
+      /* ===================================================
+         WORKBOOK
+         =================================================== */
 
       const workbook =
         createWorkbook(
@@ -1805,18 +1507,14 @@ module.exports =
         );
 
 
-      /*
-       * XLSX buffer
-       */
+      /* ===================================================
+         XLSX
+         =================================================== */
 
       const buffer =
         await workbook.xlsx
           .writeBuffer();
 
-
-      /*
-       * Filename
-       */
 
       const filename =
 
@@ -1827,12 +1525,11 @@ module.exports =
           : "SHREE_RCH_Mother_Formate.xlsx";
 
 
-      /*
-       * Response
-       */
+      /* ===================================================
+         RESPONSE
+         =================================================== */
 
-      res
-        .status(200);
+      res.status(200);
 
 
       res.setHeader(
@@ -1861,19 +1558,14 @@ module.exports =
 
       );
 
-
     }
     catch (
       error
     ) {
 
-
       console.error(
-
         "SHREE RCH Template API:",
-
         error
-
       );
 
 
@@ -1881,13 +1573,10 @@ module.exports =
         .status(400)
         .json({
 
-          ok:
-            false,
+          ok: false,
 
           error:
-
             error.message ||
-
             "Template generation failed."
 
         });
