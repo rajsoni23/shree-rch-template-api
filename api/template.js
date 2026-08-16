@@ -53,11 +53,45 @@ function clean(value) {
     .trim();
 }
 
+// Helper: "Name" ya "Name (ID)" ko standard "Name__ID__" (ya bina ID
+// ke plain "Name") format me badalta hai. formatRCHName() aur uska
+// asterisk-wala branch dono isi ek jagah se ID-extraction logic lete
+// hain, taaki dono jagah same rule lage.
+function extractIdFormat(segment) {
+  // ID bracket ke andar ho to pehle usko nikaalo
+  // e.g. "BAGHAURA_(3181)" -> "BAGHAURA__3181__"
+  const parenMatch = segment.match(/^(.*?)_?\(([0-9]+)\)_*$/);
+  if (parenMatch) {
+    const mainText = parenMatch[1].replace(/_+/g, "_").replace(/_$/, "");
+    const id = parenMatch[2];
+    return `${mainText}__${id}__`;
+  }
+
+  // Normal Text__ID__ pattern (trailing digits, no brackets)
+  const idMatch = segment.match(/^(.*?)_?([0-9]+)_*$/);
+  if (idMatch) {
+    const mainText = idMatch[1].replace(/_+/g, "_").replace(/_$/, "");
+    const id = idMatch[2];
+    return `${mainText}__${id}__`;
+  }
+
+  return segment.replace(/_+/g, "_");
+}
+
 // Cell me likhne ke liye exact format (Text__ID__)
 // FIX #1: ab bracket wale IDs jaise "Name (1234)" ya "Name(1234)" ko
 // bhi sahi se "Name__1234__" me convert karta hai (pehle ye sirf
 // trailing digits handle karta tha, bracket ")" ke wajah se match
 // fail ho jaata tha aur naam bracket ke saath hi reh jaata tha).
+// FIX #3: asterisk-wala case (village names jinme khud ek duplicate
+// ID bhi hoti hai) — agar left part (jaise "KODAVARI (10011558)")
+// khud ek ID rakhta hai, to separator "*__" (1 underscore + * + 2
+// underscore) hona chahiye; agar left sirf plain naam hai (jaise
+// "Baghaura", koi ID nahi), to separator "___*___" (3+3) hona chahiye.
+// Pehle hamesha "___*___" fixed use ho raha tha aur left part se
+// bracket bhi strip nahi hota tha — isi wajah se Village dropdown me
+// gadbad pattern (jaise "KODAVARI_(10011558)___*___10011558__")
+// ban raha tha.
 function formatRCHName(value) {
   if (value === null || value === undefined) return "";
   let str = String(value).trim();
@@ -66,36 +100,29 @@ function formatRCHName(value) {
 
   str = str.replace(/[\s\-]+/g, "_");
 
-  // Fix asterisk spacing: Text___*___ID__ (3 underscores after *)
   if (str.includes("*")) {
     const parts = str.split("*");
-    const left = parts[0].replace(/_+/g, "_").replace(/_$/, "");
-    const right = parts[1]
+    const rawLeft = parts[0].replace(/_+/g, "_").replace(/_$/, "");
+    const rightId = parts[1]
       .replace(/[()]/g, "")
       .replace(/_+/g, "_")
       .replace(/^_/, "")
       .replace(/_$/, "");
-    return `${left}___*___${right}__`;
+
+    const leftFormatted = extractIdFormat(rawLeft);
+
+    if (leftFormatted.endsWith("__")) {
+      // Left part khud ek ID rakhta hai
+      // e.g. "KODAVARI__10011558__" -> "KODAVARI__10011558_*__10011558__"
+      return `${leftFormatted.slice(0, -1)}*__${rightId}__`;
+    }
+
+    // Left part sirf naam hai, koi ID nahi
+    // e.g. "Baghaura" -> "Baghaura___*___105340__"
+    return `${leftFormatted}___*___${rightId}__`;
   }
 
-  // NEW: ID bracket ke andar ho to pehle usko nikaalo
-  // e.g. "BAGHAURA_(3181)" -> "BAGHAURA__3181__"
-  const parenMatch = str.match(/^(.*?)_?\(([0-9]+)\)_*$/);
-  if (parenMatch) {
-    const mainText = parenMatch[1].replace(/_+/g, "_").replace(/_$/, "");
-    const id = parenMatch[2];
-    return `${mainText}__${id}__`;
-  }
-
-  // Normal Text__ID__ pattern (trailing digits, no brackets)
-  const idMatch = str.match(/^(.*?)_?([0-9]+)_*$/);
-  if (idMatch) {
-    const mainText = idMatch[1].replace(/_+/g, "_").replace(/_$/, "");
-    const id = idMatch[2];
-    return `${mainText}__${id}__`;
-  }
-
-  return str.replace(/_+/g, "_");
+  return extractIdFormat(str);
 }
 
 // Defined Name identifier ke liye STRICT Excel-safe Rule (No '*', No special chars)
