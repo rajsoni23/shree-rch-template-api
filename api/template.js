@@ -43,13 +43,33 @@ const CHILD_HEADERS = [
   "HBIGDate",
 ];
 
+
+/* =========================================================
+   BASIC HELPERS
+   ========================================================= */
+
 function clean(value) {
+
   return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
+
 }
 
+
+/*
+ * Converts:
+ *
+ * BAGHAURA (3181)
+ *
+ * into:
+ *
+ * BAGHAURA__3181__
+ *
+ * Existing __ format is preserved.
+ */
 function convertLocationFormat(value) {
+
   if (
     value === null ||
     value === undefined
@@ -60,20 +80,40 @@ function convertLocationFormat(value) {
   let text =
     String(value).trim();
 
-  text =
-    text.replace(/\(/g, "__");
 
   text =
-    text.replace(/\)/g, "__");
+    text.replace(
+      /\(/g,
+      "__"
+    );
+
+
+  text =
+    text.replace(
+      /\)/g,
+      "__"
+    );
+
 
   return text;
+
 }
+
+
+/* =========================================================
+   NORMALIZE LOCATION OBJECT
+   ========================================================= */
 
 function normalizeObject(value) {
 
   if (Array.isArray(value)) {
-    return value.map(normalizeObject);
+
+    return value.map(
+      normalizeObject
+    );
+
   }
+
 
   if (
     value &&
@@ -82,21 +122,33 @@ function normalizeObject(value) {
 
     const out = {};
 
+
     for (
-      const [k, v]
+      const [key, val]
       of Object.entries(value)
     ) {
 
-      out[clean(k)] =
-        normalizeObject(v);
+      out[
+        clean(key)
+      ] =
+        normalizeObject(val);
 
     }
 
+
     return out;
+
   }
 
+
   return value;
+
 }
+
+
+/* =========================================================
+   SAFE EXCEL NAME
+   ========================================================= */
 
 function safeName(
   value,
@@ -114,21 +166,36 @@ function safeName(
         "_"
       );
 
+
   if (!name) {
-    name = fallback;
+
+    name =
+      fallback;
+
   }
+
 
   if (
     /^[0-9]/.test(name)
   ) {
-    name = "_" + name;
+
+    name =
+      "_" + name;
+
   }
+
 
   return name.slice(
     0,
     200
   );
+
 }
+
+
+/* =========================================================
+   REQUEST PARSER
+   ========================================================= */
 
 function parseRequest(req) {
 
@@ -138,17 +205,21 @@ function parseRequest(req) {
   let baseData =
     req.body?.baseData;
 
+
   if (
     typeof type === "string" &&
     typeof baseData === "string"
   ) {
 
     return {
+
       type,
       baseData
+
     };
 
   }
+
 
   if (
     typeof req.body === "object" &&
@@ -156,20 +227,32 @@ function parseRequest(req) {
   ) {
 
     return {
+
       type:
         req.body.typData,
 
       baseData:
         req.body.baseData
+
     };
 
   }
 
+
   return {
+
     type,
+
     baseData
+
   };
+
 }
+
+
+/* =========================================================
+   BASE64 LOCATION DATA
+   ========================================================= */
 
 function decodeLocationData(
   baseData
@@ -183,7 +266,9 @@ function decodeLocationData(
 
   }
 
+
   let decoded;
+
 
   try {
 
@@ -193,7 +278,9 @@ function decodeLocationData(
           String(baseData),
           "base64"
         )
-        .toString("utf8");
+        .toString(
+          "utf8"
+        );
 
   }
   catch {
@@ -204,7 +291,9 @@ function decodeLocationData(
 
   }
 
+
   let data;
+
 
   try {
 
@@ -222,6 +311,7 @@ function decodeLocationData(
 
   }
 
+
   if (
     !data ||
     typeof data !== "object" ||
@@ -234,8 +324,17 @@ function decodeLocationData(
 
   }
 
-  return normalizeObject(data);
+
+  return normalizeObject(
+    data
+  );
+
 }
+
+
+/* =========================================================
+   BUILD LOCATION MODEL
+   ========================================================= */
 
 function buildLocationModel(
   locationData
@@ -248,6 +347,7 @@ function buildLocationModel(
 
   const villagesByPair =
     new Map();
+
 
   for (
     const [
@@ -264,23 +364,36 @@ function buildLocationModel(
         rawPhc
       );
 
+
     if (
       !phc ||
       !rawSubs ||
       typeof rawSubs !== "object" ||
       Array.isArray(rawSubs)
     ) {
+
       continue;
+
     }
 
+
     if (
-      !phcs.includes(phc)
+      !phcs.includes(
+        phc
+      )
     ) {
-      phcs.push(phc);
+
+      phcs.push(
+        phc
+      );
+
     }
 
+
     if (
-      !subByPhc.has(phc)
+      !subByPhc.has(
+        phc
+      )
     ) {
 
       subByPhc.set(
@@ -289,6 +402,7 @@ function buildLocationModel(
       );
 
     }
+
 
     for (
       const [
@@ -305,23 +419,41 @@ function buildLocationModel(
           rawSub
         );
 
+
       if (!sub) {
+
         continue;
+
       }
+
 
       const subs =
-        subByPhc.get(phc);
+        subByPhc.get(
+          phc
+        );
+
 
       if (
-        !subs.includes(sub)
+        !subs.includes(
+          sub
+        )
       ) {
 
-        subs.push(sub);
+        subs.push(
+          sub
+        );
 
       }
 
+
+      /*
+       * UNIQUE KEY
+       *
+       * PHC + SUBCENTRE
+       */
       const pairKey =
         `${phc}|${sub}`;
+
 
       if (
         !villagesByPair.has(
@@ -335,6 +467,7 @@ function buildLocationModel(
         );
 
       }
+
 
       if (
         Array.isArray(
@@ -352,11 +485,14 @@ function buildLocationModel(
               rawVillage
             );
 
+
           if (
             village &&
             !villagesByPair
               .get(pairKey)
-              .includes(village)
+              .includes(
+                village
+              )
           ) {
 
             villagesByPair
@@ -375,7 +511,10 @@ function buildLocationModel(
 
   }
 
-  if (!phcs.length) {
+
+  if (
+    !phcs.length
+  ) {
 
     throw new Error(
       "No Health Facility/PHC data was supplied."
@@ -383,11 +522,13 @@ function buildLocationModel(
 
   }
 
+
   if (
     ![
       ...villagesByPair.values()
     ].some(
-      v => v.length
+      list =>
+        list.length > 0
     )
   ) {
 
@@ -397,18 +538,41 @@ function buildLocationModel(
 
   }
 
+
   return {
+
     phcs,
+
     subByPhc,
+
     villagesByPair
+
   };
+
 }
 
-/*
-=========================================================
-IMPORTANT FIX
-=========================================================
-*/
+
+/* =========================================================
+   NAMED RANGE
+   =========================================================
+
+   IMPORTANT:
+
+   ExcelJS syntax:
+
+   definedNames.add(
+       range,
+       name
+   );
+
+   NOT:
+
+   definedNames.add(
+       name,
+       range
+   );
+   ========================================================= */
+
 function addNamedRange(
   workbook,
   name,
@@ -417,11 +581,19 @@ function addNamedRange(
 ) {
 
   workbook.definedNames.add(
-    name,
-    `'${sheetName}'!${range}`
+
+    `'${sheetName}'!${range}`,
+
+    name
+
   );
 
 }
+
+
+/* =========================================================
+   LIST VALIDATION
+   ========================================================= */
 
 function addListValidation(
   cell,
@@ -432,15 +604,20 @@ function addListValidation(
 
   cell.dataValidation = {
 
-    type: "list",
+    type:
+      "list",
 
-    allowBlank: true,
+    allowBlank:
+      true,
 
-    showInputMessage: true,
+    showInputMessage:
+      true,
 
-    showErrorMessage: true,
+    showErrorMessage:
+      true,
 
-    errorStyle: "stop",
+    errorStyle:
+      "stop",
 
     errorTitle,
 
@@ -454,25 +631,41 @@ function addListValidation(
 
 }
 
-function styleHeader(row) {
 
-  row.height = 24;
+/* =========================================================
+   HEADER STYLE
+   ========================================================= */
+
+function styleHeader(
+  row
+) {
+
+  row.height =
+    24;
+
 
   row.eachCell(
-    (cell) => {
+    (
+      cell
+    ) => {
 
       cell.font = {
-        bold: true,
+
+        bold:
+          true,
 
         color: {
           argb:
             "FFFFFFFF"
         }
+
       };
+
 
       cell.fill = {
 
-        type: "pattern",
+        type:
+          "pattern",
 
         pattern:
           "solid",
@@ -483,6 +676,7 @@ function styleHeader(row) {
         }
 
       };
+
 
       cell.alignment = {
 
@@ -497,9 +691,11 @@ function styleHeader(row) {
 
       };
 
+
       cell.border = {
 
         top: {
+
           style:
             "thin",
 
@@ -507,9 +703,11 @@ function styleHeader(row) {
             argb:
               "FFD9E2F3"
           }
+
         },
 
         left: {
+
           style:
             "thin",
 
@@ -517,9 +715,11 @@ function styleHeader(row) {
             argb:
               "FFD9E2F3"
           }
+
         },
 
         bottom: {
+
           style:
             "thin",
 
@@ -527,9 +727,11 @@ function styleHeader(row) {
             argb:
               "FFD9E2F3"
           }
+
         },
 
         right: {
+
           style:
             "thin",
 
@@ -537,6 +739,7 @@ function styleHeader(row) {
             argb:
               "FFD9E2F3"
           }
+
         }
 
       };
@@ -546,56 +749,95 @@ function styleHeader(row) {
 
 }
 
+
+/* =========================================================
+   MAIN SHEET
+   ========================================================= */
+
 function configureMainSheet(
   ws,
   headers
 ) {
 
   ws.views = [
+
     {
+
       state:
         "frozen",
 
       ySplit:
         1
+
     }
+
   ];
+
 
   ws.getRow(
     1
   ).values =
     headers;
 
+
   styleHeader(
-    ws.getRow(1)
+    ws.getRow(
+      1
+    )
   );
 
-  ws.getColumn(1).width =
+
+  ws.getColumn(
+    1
+  ).width =
     28;
 
-  ws.getColumn(2).width =
+
+  ws.getColumn(
+    2
+  ).width =
     28;
 
-  ws.getColumn(3).width =
+
+  ws.getColumn(
+    3
+  ).width =
     32;
 
+
   for (
-    let c = 4;
-    c <= headers.length;
-    c++
+    let column = 4;
+    column <= headers.length;
+    column++
   ) {
 
-    ws.getColumn(c).width =
+    ws.getColumn(
+      column
+    ).width =
+
       Math.max(
+
         14,
+
         Math.min(
+
           28,
-          headers[c - 1]
-            .length + 4
+
+          headers[
+            column - 1
+          ].length + 4
+
         )
+
       );
 
   }
+
+
+  /*
+   * Clear existing validation
+   * before adding our own.
+   */
 
   for (
     let row = 2;
@@ -609,11 +851,13 @@ function configureMainSheet(
     ).dataValidation =
       undefined;
 
+
     ws.getCell(
       row,
       2
     ).dataValidation =
       undefined;
+
 
     ws.getCell(
       row,
@@ -625,6 +869,11 @@ function configureMainSheet(
 
 }
 
+
+/* =========================================================
+   CREATE WORKBOOK
+   ========================================================= */
+
 function createWorkbook(
   type,
   locationData
@@ -635,86 +884,150 @@ function createWorkbook(
       locationData
     );
 
+
   const workbook =
     new ExcelJS.Workbook();
+
 
   workbook.creator =
     "SHREE RCH";
 
+
   workbook.created =
     new Date();
 
+
   workbook.modified =
     new Date();
+
+
+  /*
+   =========================================================
+   MAIN
+   =========================================================
+   */
 
   const main =
     workbook.addWorksheet(
       "Main"
     );
 
+
+  /*
+   =========================================================
+   SUBCENTER
+   =========================================================
+   */
+
   const subcenter =
     workbook.addWorksheet(
       "Subcenter"
     );
+
+
+  /*
+   =========================================================
+   VILLAGE
+   =========================================================
+   */
 
   const village =
     workbook.addWorksheet(
       "Village"
     );
 
+
   const headers =
     type === "child"
+
       ? CHILD_HEADERS
+
       : MOTHER_HEADERS;
+
 
   configureMainSheet(
     main,
     headers
   );
 
-  /*
-   =========================================================
-   SUBCENTER MASTER
-   =========================================================
-  */
+
+  /* =======================================================
+     SUBCENTER MASTER
+     ======================================================= */
 
   subcenter.getRow(
     1
   ).values = [
+
     "PHC",
+
     "SubCentre"
+
   ];
 
+
   styleHeader(
-    subcenter.getRow(1)
+    subcenter.getRow(
+      1
+    )
   );
 
-  subcenter.getColumn(1).width =
+
+  subcenter.getColumn(
+    1
+  ).width =
     30;
 
-  subcenter.getColumn(2).width =
+
+  subcenter.getColumn(
+    2
+  ).width =
     30;
 
-  subcenter.getColumn(4).width =
+
+  subcenter.getColumn(
+    4
+  ).width =
     2;
 
-  subcenter.getColumn(4).hidden =
+
+  subcenter.getColumn(
+    4
+  ).hidden =
     true;
 
-  let subRow = 2;
 
-  const phcRangeRows = [];
+  let subRow =
+    2;
+
+
+  const phcRangeRows =
+    [];
+
+
+  /*
+   * Put each PHC's
+   * SubCentres together.
+   */
 
   for (
-    const phc of model.phcs
+    const phc
+    of model.phcs
   ) {
 
     const start =
       subRow;
 
+
+    const subs =
+      model.subByPhc.get(
+        phc
+      ) || [];
+
+
     for (
       const sub
-      of model.subByPhc.get(phc) || []
+      of subs
     ) {
 
       subcenter.getCell(
@@ -723,15 +1036,18 @@ function createWorkbook(
       ).value =
         phc;
 
+
       subcenter.getCell(
         subRow,
         2
       ).value =
         sub;
 
+
       subRow++;
 
     }
+
 
     if (
       subRow > start
@@ -752,114 +1068,198 @@ function createWorkbook(
 
   }
 
+
+  /*
+   * Hidden PHC list
+   */
+
   const phcListStart =
     2;
 
+
   model.phcs.forEach(
+
     (
       phc,
-      i
+      index
     ) => {
 
       subcenter.getCell(
-        phcListStart + i,
+        phcListStart + index,
         4
       ).value =
         phc;
 
     }
+
   );
+
+
+  /*
+   * PHC_LIST
+   */
 
   addNamedRange(
+
     workbook,
+
     "PHC_LIST",
+
     "Subcenter",
+
     `$D$${phcListStart}:$D$${phcListStart + model.phcs.length - 1}`
+
   );
 
+
+  /*
+   * SC_1
+   * SC_2
+   * SC_3...
+   */
+
   phcRangeRows.forEach(
+
     (
       item,
       index
     ) => {
 
       addNamedRange(
+
         workbook,
+
         `SC_${index + 1}`,
+
         "Subcenter",
+
         `$B$${item.start}:$B$${item.end}`
+
       );
 
     }
+
   );
 
-  /*
-   =========================================================
-   VILLAGE MASTER
-   =========================================================
-  */
+
+  /* =======================================================
+     VILLAGE MASTER
+     ======================================================= */
 
   village.getRow(
     1
   ).values = [
+
     "PHC",
+
     "SubCentre",
+
     "Village",
+
     "PAIR_KEY"
+
   ];
 
+
   styleHeader(
-    village.getRow(1)
+    village.getRow(
+      1
+    )
   );
 
-  village.getColumn(1).width =
+
+  village.getColumn(
+    1
+  ).width =
     30;
 
-  village.getColumn(2).width =
+
+  village.getColumn(
+    2
+  ).width =
     30;
 
-  village.getColumn(3).width =
+
+  village.getColumn(
+    3
+  ).width =
     36;
 
-  village.getColumn(4).width =
+
+  village.getColumn(
+    4
+  ).width =
     2;
 
-  village.getColumn(4).hidden =
+
+  village.getColumn(
+    4
+  ).hidden =
     true;
 
-  let villageRow = 2;
 
-  const pairRows = [];
+  let villageRow =
+    2;
 
-  const pairList = [];
+
+  const pairRows =
+    [];
+
+
+  const pairList =
+    [];
+
+
+  /*
+   * IMPORTANT:
+   *
+   * Every PHC + SubCentre
+   * gets its own village range.
+   */
 
   for (
-    const phc of model.phcs
+    const phc
+    of model.phcs
   ) {
+
+    const subs =
+      model.subByPhc.get(
+        phc
+      ) || [];
+
 
     for (
       const sub
-      of model.subByPhc.get(phc) || []
+      of subs
     ) {
 
       const pairKey =
         `${phc}|${sub}`;
 
+
       const villages =
         model.villagesByPair
-          .get(pairKey) || [];
+          .get(
+            pairKey
+          ) || [];
+
 
       if (
         !villages.length
       ) {
+
         continue;
+
       }
+
 
       const start =
         villageRow;
 
+
       for (
-        const v of villages
+        const villageName
+        of villages
       ) {
 
         village.getCell(
@@ -868,17 +1268,20 @@ function createWorkbook(
         ).value =
           phc;
 
+
         village.getCell(
           villageRow,
           2
         ).value =
           sub;
 
+
         village.getCell(
           villageRow,
           3
         ).value =
-          v;
+          villageName;
+
 
         village.getCell(
           villageRow,
@@ -886,9 +1289,11 @@ function createWorkbook(
         ).value =
           pairKey;
 
+
         villageRow++;
 
       }
+
 
       pairRows.push({
 
@@ -901,6 +1306,7 @@ function createWorkbook(
 
       });
 
+
       pairList.push(
         pairKey
       );
@@ -909,61 +1315,100 @@ function createWorkbook(
 
   }
 
+
+  /*
+   * Hidden PAIR_KEYS
+   */
+
   pairList.forEach(
+
     (
       pair,
-      i
+      index
     ) => {
 
       village.getCell(
-        2 + i,
+        index + 2,
         5
       ).value =
         pair;
 
     }
+
   );
 
-  village.getColumn(5).width =
+
+  village.getColumn(
+    5
+  ).width =
     2;
 
-  village.getColumn(5).hidden =
+
+  village.getColumn(
+    5
+  ).hidden =
     true;
+
+
+  /*
+   * PAIR_KEYS named range
+   */
 
   if (
     pairList.length
   ) {
 
     addNamedRange(
+
       workbook,
+
       "PAIR_KEYS",
+
       "Village",
+
       `$E$2:$E$${pairList.length + 1}`
+
     );
 
   }
 
+
+  /*
+   * V_1
+   * V_2
+   * V_3...
+   *
+   * Every range belongs to
+   * ONE PHC + ONE SubCentre.
+   */
+
   pairRows.forEach(
+
     (
       item,
       index
     ) => {
 
       addNamedRange(
+
         workbook,
+
         `V_${index + 1}`,
+
         "Village",
+
         `$C$${item.start}:$C$${item.end}`
+
       );
 
     }
+
   );
 
-  /*
-   =========================================================
-   DEPENDENT DROPDOWNS
-   =========================================================
-  */
+
+  /* =======================================================
+     DEPENDENT DROPDOWNS
+     ======================================================= */
 
   for (
     let row = 2;
@@ -971,8 +1416,11 @@ function createWorkbook(
     row++
   ) {
 
+
     /*
-     * A = Health Facility
+     * =====================================================
+     * A = HEALTH FACILITY
+     * =====================================================
      */
 
     addListValidation(
@@ -990,8 +1438,22 @@ function createWorkbook(
 
     );
 
+
     /*
-     * B = SubCentre
+     * =====================================================
+     * B = SUBCENTRE
+     * =====================================================
+     *
+     * A2 selected:
+     *
+     * BAGHAURA__3181__
+     *
+     * MATCH finds its position in PHC_LIST.
+     *
+     * SC_1 / SC_2 / SC_3...
+     * gives only that PHC's
+     * SubCentres.
+     * =====================================================
      */
 
     addListValidation(
@@ -1009,8 +1471,24 @@ function createWorkbook(
 
     );
 
+
     /*
-     * C = Village
+     * =====================================================
+     * C = VILLAGE
+     * =====================================================
+     *
+     * A2 = PHC
+     * B2 = SubCentre
+     *
+     * pair:
+     *
+     * PHC|SubCentre
+     *
+     * MATCH finds exactly that pair.
+     *
+     * V_1 / V_2 / V_3...
+     * contains ONLY that SubCentre's villages.
+     * =====================================================
      */
 
     addListValidation(
@@ -1030,22 +1508,39 @@ function createWorkbook(
 
   }
 
+
+  /*
+   * No filters.
+   */
+
+  main.autoFilter =
+    undefined;
+
+
   subcenter.autoFilter =
     undefined;
+
 
   village.autoFilter =
     undefined;
 
-  main.autoFilter =
-    undefined;
 
   return workbook;
 
 }
 
+
+/* =========================================================
+   READ REQUEST BODY
+   ========================================================= */
+
 async function readBody(
   req
 ) {
+
+  /*
+   * Vercel may already parse JSON.
+   */
 
   if (
     req.body &&
@@ -1056,10 +1551,14 @@ async function readBody(
 
   }
 
-  const chunks = [];
+
+  const chunks =
+    [];
+
 
   for await (
-    const chunk of req
+    const chunk
+    of req
   ) {
 
     chunks.push(
@@ -1068,14 +1567,23 @@ async function readBody(
 
   }
 
+
   const raw =
     Buffer
-      .concat(chunks)
-      .toString("utf8");
+      .concat(
+        chunks
+      )
+      .toString(
+        "utf8"
+      );
+
 
   if (!raw) {
+
     return {};
+
   }
+
 
   const contentType =
     String(
@@ -1083,6 +1591,11 @@ async function readBody(
         "content-type"
       ] || ""
     );
+
+
+  /*
+   * JSON
+   */
 
   if (
     contentType.includes(
@@ -1096,10 +1609,16 @@ async function readBody(
 
   }
 
+
+  /*
+   * Form URL Encoded
+   */
+
   const params =
     new URLSearchParams(
       raw
     );
+
 
   return Object.fromEntries(
     params.entries()
@@ -1107,94 +1626,148 @@ async function readBody(
 
 }
 
+
+/* =========================================================
+   VERCEL HANDLER
+   ========================================================= */
+
 module.exports =
   async function handler(
     req,
     res
   ) {
 
+
+    /*
+     * CORS
+     */
+
     res.setHeader(
       "Access-Control-Allow-Origin",
       ALLOW_ORIGIN
     );
+
 
     res.setHeader(
       "Access-Control-Allow-Methods",
       "POST, OPTIONS"
     );
 
+
     res.setHeader(
       "Access-Control-Allow-Headers",
       "Content-Type"
     );
+
 
     res.setHeader(
       "Cache-Control",
       "no-store"
     );
 
+
+    /*
+     * OPTIONS
+     */
+
     if (
-      req.method === "OPTIONS"
+      req.method ===
+      "OPTIONS"
     ) {
 
-      res.status(204).end();
+      res
+        .status(204)
+        .end();
 
       return;
 
     }
 
+
+    /*
+     * GET
+     *
+     * API health check
+     */
+
     if (
-      req.method === "GET"
+      req.method ===
+      "GET"
     ) {
 
-      res.status(200).json({
+      res
+        .status(200)
+        .json({
 
-        ok: true,
+          ok:
+            true,
 
-        service:
-          "SHREE RCH Template API",
+          service:
+            "SHREE RCH Template API",
 
-        endpoint:
-          "/api/template",
+          endpoint:
+            "/api/template",
 
-        methods: [
-          "POST"
-        ]
+          methods: [
+            "POST"
+          ]
 
-      });
+        });
 
       return;
 
     }
 
+
+    /*
+     * Only POST
+     */
+
     if (
-      req.method !== "POST"
+      req.method !==
+      "POST"
     ) {
 
-      res.status(405).json({
+      res
+        .status(405)
+        .json({
 
-        ok: false,
+          ok:
+            false,
 
-        error:
-          "Method not allowed. Use POST."
+          error:
+            "Method not allowed. Use POST."
 
-      });
+        });
 
       return;
 
     }
+
 
     try {
+
+
+      /*
+       * Read request
+       */
 
       const body =
         await readBody(
           req
         );
 
+
+      /*
+       * Mother / Child
+       */
+
       const type =
         clean(
           body.typData
-        ).toLowerCase();
+        )
+        .toLowerCase();
+
 
       if (
         type !== "mother" &&
@@ -1207,60 +1780,117 @@ module.exports =
 
       }
 
+
+      /*
+       * Decode location data
+       */
+
       const locationData =
         decodeLocationData(
           body.baseData
         );
 
+
+      /*
+       * Generate workbook
+       */
+
       const workbook =
         createWorkbook(
+
           type,
+
           locationData
+
         );
 
+
+      /*
+       * XLSX buffer
+       */
+
       const buffer =
-        await workbook.xlsx.writeBuffer();
+        await workbook.xlsx
+          .writeBuffer();
+
+
+      /*
+       * Filename
+       */
 
       const filename =
+
         type === "child"
+
           ? "SHREE_RCH_Child_Formate.xlsx"
+
           : "SHREE_RCH_Mother_Formate.xlsx";
 
-      res.status(200);
+
+      /*
+       * Response
+       */
+
+      res
+        .status(200);
+
 
       res.setHeader(
+
         "Content-Type",
+
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
       );
 
+
       res.setHeader(
+
         "Content-Disposition",
+
         `attachment; filename="${filename}"`
+
       );
+
 
       res.send(
+
         Buffer.from(
           buffer
         )
+
       );
+
 
     }
-    catch (error) {
+    catch (
+      error
+    ) {
+
 
       console.error(
+
         "SHREE RCH Template API:",
+
         error
+
       );
 
-      res.status(400).json({
 
-        ok: false,
+      res
+        .status(400)
+        .json({
 
-        error:
-          error.message ||
-          "Template generation failed."
+          ok:
+            false,
 
-      });
+          error:
+
+            error.message ||
+
+            "Template generation failed."
+
+        });
 
     }
 
